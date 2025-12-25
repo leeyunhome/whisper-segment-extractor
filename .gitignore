@@ -19,14 +19,25 @@ whisper_env/
 
 # 생성된 파일
 extracted_*.mp3
+*_extracted_*.mp3
 transcription_*.json
 script_*.txt
 temp_segment.mp3
 *.wav
 
+# 분석 결과 파일
+analysis_result.txt
+anchor_check_result.txt
+
 # 원본 MP3 파일 (용량이 클 수 있으므로)
 20*.mp3
 왕초보영어_*.mp3
+
+# 백업 및 임시 파일
+*copy.py
+*.bak
+*.backup
+README_extract_conversation.md
 
 # IDE
 .vscode/
