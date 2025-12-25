@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+venv/
+env/
+ENV/
+whisper_env/
+
+# Whisper 모델 캐시
+~/.cache/whisper/
+
+# 생성된 파일
+extracted_*.mp3
+transcription_*.json
+script_*.txt
+temp_segment.mp3
+*.wav
+
+# 원본 MP3 파일 (용량이 클 수 있으므로)
+20*.mp3
+왕초보영어_*.mp3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 로그 및 임시 파일
+*.log
+*.tmp
