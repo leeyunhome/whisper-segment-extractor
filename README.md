@@ -1,6 +1,8 @@
-# EBS 영어 강의 대화 구간 자동 추출 도구
+# Whisper Segment Extractor
 
-EBS 영어 강의 MP3 파일에서 "전체대화" 구간을 자동으로 감지하고 추출하는 AI 기반 도구입니다.
+Whisper AI를 활용하여 오디오 파일에서 특정 대화 구간을 자동으로 감지하고 추출하는 도구입니다.
+
+강의, 팟캐스트, 인터뷰 등 다양한 오디오 콘텐츠에서 원하는 세그먼트를 정확하게 추출할 수 있습니다.
 
 ## 주요 기능
 
@@ -23,24 +25,24 @@ choco install ffmpeg
 
 ## 사용 방법
 
-### 단일 파일 처리
+## 사용 예시
 
+### EBS 영어 강의
 ```bash
-# 특정 파일 하나만 처리
-python smart_extract.py -f your_file.mp3
-
-# 더 정확한 모델 사용
-python smart_extract.py -f your_file.mp3 --model small
+# "전체대화" 앵커로 대화 구간 추출
+python smart_extract.py -f ebs_lecture.mp3 --model small
 ```
 
-### 폴더 전체 처리
-
+### 팟캐스트
 ```bash
-# 현재 폴더의 모든 MP3 처리
-python smart_extract.py
+# 특정 문구 이후 대화 추출 (코드 수정 필요)
+python smart_extract.py -f podcast.mp3
+```
 
-# 특정 폴더 처리
-python smart_extract.py --folder "C:\MyFiles"
+### 인터뷰/회의록
+```bash
+# 폴더의 모든 오디오 파일 처리
+python smart_extract.py --folder "C:\Recordings"
 ```
 
 ## 출력 파일
