@@ -24,6 +24,7 @@ transcription_*.json
 script_*.txt
 temp_segment.mp3
 *.wav
+*.mp3
 
 # 분석 결과 파일
 analysis_result.txt

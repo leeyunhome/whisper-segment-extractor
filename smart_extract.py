@@ -86,10 +86,9 @@ class SmartConversationExtractor:
             if debug: print(f"      ❌ 한글 포함")
             return False
         
-        # 영어 전사 모드에서:
-        # 1. 길이가 너무 짧으면 무시 (hallucination이나 노이즈)
-        if len(text) < 12:  # 완화: 20 → 12 (짧은 응답 허용)
-            if debug: print(f"      ❌ 너무 짧음 ({len(text)}자 < 12자)")
+        # 1. 텍스트가 너무 짧으면 hallucination일 수 있으나, "Yes", "No" 등을 위해 3자 이상이면 허용
+        if len(text) < 3:
+            if debug: print(f"      ❌ 너무 짧음 ({len(text)}자 < 3자)")
             return False
         
         # 2. 한국어를 영어로 잘못 전사한 패턴 감지
@@ -106,11 +105,9 @@ class SmartConversationExtractor:
                 if debug: print(f"      ❌ 한국어 패턴 '{pattern}' 감지")
                 return False
         
-        # 3. 공백으로 분리된 단어가 2개 미만이면 의심  
-        words = text.split()
-        if len(words) < 2:  # 완화: 3 → 2 ("Please." 등 짧은 응답 허용)
-            if debug: print(f"      ❌ 단어 수 부족 ({len(words)}개 < 2개)")
-            return False
+        # 3. 단어 수 체크 제거 (짧은 추임새 허용)
+        # if len(words) < 2: 
+        #    ...
         
         # 한글과 한국어 패턴 체크만으로도 충분 - 영어 단어 검증은 너무 제한적
         if debug: print(f"      ✅ 통과!")
@@ -291,17 +288,16 @@ class SmartConversationExtractor:
                         print(f"  💬 첫 대화 세트 감지 ({consecutive_valid}개 연속)")
                     
                 else:
-                    # 유효하지 않은 세그먼트
-                    # 첫 대화 세트를 찾았고, 긴 gap가 있으면 종료
-                    if first_conversation_found and english_start_time is not None:
-                        gap = seg_start - last_end_time
-                        if gap > 5.0:  # 첫 대화 후에는 5초만 gap 허용
-                            print(f"\n  🎯 첫 대화 세트 완료 후 {gap:.1f}초 공백 감지")
-                            print(f"  ⏹️  선생님 설명 전에 종료합니다")
+                    # 유효하지 않은 세그먼트 (한글 감지 등)
+                    # 대화가 일단 시작된 후라면, 한글이 나오거나 긴 공백이 있으면 즉시 종료
+                    if english_start_time is not None:
+                        # 1. 한글이 포함된 세그먼트인 경우
+                        if any('가' <= c <= '힣' for c in text):
+                            print(f"\n  ⏹️  한글 감지 (설명 시작): {text[:50]}")
+                            print(f"  🎯 대화 종료 직전: {last_end_time:.1f}초")
                             break
-                    
-                    # 대화가 시작했지만 첫 세트를 못 찾았으면 15초 gap 허용
-                    if english_start_time is not None and not first_conversation_found:
+                        
+                        # 2. 공백 체크 (완화: 15초)
                         gap = seg_start - last_end_time
                         if gap > gap_threshold:
                             print(f"\n  ⏹️  {gap:.1f}초 공백 감지, 대화 종료")
@@ -316,9 +312,39 @@ class SmartConversationExtractor:
             print("⚠️  영어 대화 구간을 찾지 못했습니다. 고정 시간 추출합니다.")
             return self._extract_fixed(audio_path, anchor_end_time, base_name, result)
         
-        # 4. 추출 시작점 설정: 첫 영어 세그먼트부터
+        # 4. 정밀 종료 지점 찾기 (inaSpeechSegmenter 활용)
         extract_start = english_start_time
         extract_end = english_end_time
+        
+        if HAS_INA:
+            if self.segmenter is None:
+                self.load_models()
+                
+            if self.segmenter is not None:
+                print("\n🎼 음악 기반 정밀 종료 지점 분석 중...")
+                ina_segments = self.segmenter(audio_path)
+                
+                # Whisper가 찾은 종료 지점 이전에 시작한 마지막 음악 세그먼트 찾기
+                # 대화 배경 음악은 보통 대화가 끝날 때 같이 끝남
+                last_music_end = None
+                for label, start, end in ina_segments:
+                    if label == 'music':
+                        # Whisper가 감지한 종료 지점 직전이나 약간 지난 시점까지의 음악만 인정
+                        if start < english_end_time + 2.0:
+                            last_music_end = end
+                
+                if last_music_end:
+                    # 음악 종료 지점이 Whisper 세그먼트 종료 지점보다 앞서면 (한글이 섞였다면) 보정
+                    # 혹은 약간 뒤에 있더라도 5초 이내라면 음악 종료 지점을 우선시
+                    time_diff = last_music_end - extract_end
+                    if -10.0 < time_diff < 5.0:
+                        print(f"  🎵 마지막 음악 종료 감지: {last_music_end:.2f}초")
+                        print(f"  ✨ 종료 지점 보정: {extract_end:.2f}초 -> {last_music_end:.2f}초 (차이: {time_diff:.2f}초)")
+                        extract_end = last_music_end
+                    else:
+                        print(f"  ℹ️  음악 종료({last_music_end:.1f}초)가 Whisper 종료({extract_end:.1f}초)와 너무 멀어 무시합니다.")
+
+        # 5. 추출 시작점 설정
         print(f"\n✅ 첫 영어 세그먼트: {extract_start:.2f}초 ({extract_start/60:.2f}분)")
         print(f"✅ 마지막 영어 세그먼트: {extract_end:.2f}초 ({extract_end/60:.2f}분)")
 
@@ -363,167 +389,6 @@ class SmartConversationExtractor:
         print(f"📝 대화 스크립트 저장: {script_path}\n")
         
         return True, anchor_end_time, output_path
-        """
-        음악 기반 지능형 추출
-        
-        Returns:
-            (성공 여부, 앵커 시간, 추출 파일 경로)
-        """
-        print(f"{'='*80}")
-        print(f"🎵 파일: {os.path.basename(audio_path)}")
-        print(f"{'='*80}\n")
-        
-        # 1. 오디오를 23분부터만 로드하여 전사 (속도 향상)
-        print(f"🔄 오디오 로딩 및 전사 중 ({search_start_time/60:.1f}분부터)...")
-        
-        # 23분부터 오디오 추출
-        audio_full = AudioSegment.from_mp3(audio_path)
-        start_ms = search_start_time * 1000
-        audio_segment = audio_full[start_ms:]
-        
-        # 임시 파일로 저장
-        temp_path = "temp_segment.mp3"
-        audio_segment.export(temp_path, format="mp3")
-        
-        # 전사 (23분 이후만)
-        result = self.model.transcribe(
-            temp_path,
-            language='ko',
-            word_timestamps=False,
-            verbose=False
-        )
-        
-        # 시간 오프셋 보정 (23분 추가)
-        for segment in result['segments']:
-            segment['start'] += search_start_time
-            segment['end'] += search_start_time
-        
-        # 임시 파일 삭제
-        os.remove(temp_path)
-        
-        # 전사 결과 저장
-        base_name = Path(audio_path).stem
-        transcription_path = f"transcription_{base_name}.json"
-        with open(transcription_path, 'w', encoding='utf-8') as f:
-            json.dump(result, f, ensure_ascii=False, indent=2)
-        print(f"💾 전사 결과 저장: {transcription_path}\n")
-        
-        # 2. 앵커 검색
-        print(f"🔍 앵커 문구 검색 중...")
-        anchor_end_time = None
-        segments = result['segments']
-        
-        # 단일 세그먼트 검색
-        for segment in segments:
-            text = segment['text'].strip()
-            
-            for anchor in anchor_phrases:
-                if anchor in text:
-                    anchor_end_time = segment['end']
-                    print(f"✅ 앵커 발견!")
-                    print(f"   텍스트: '{text}'")
-                    print(f"   시간: {anchor_end_time:.2f}초 ({anchor_end_time/60:.2f}분)\n")
-                    break
-            
-            if anchor_end_time:
-                break
-        
-        # 병합 검색
-        if anchor_end_time is None:
-            print(f"🔍 연속 세그먼트 병합 검색 중...")
-            for i, segment in enumerate(segments):
-                if i < len(segments) - 2:
-                    combined_text = (
-                        segment['text'] + 
-                        segments[i+1]['text'] + 
-                        segments[i+2]['text']
-                    ).strip()
-                    
-                    for anchor in anchor_phrases:
-                        if anchor in combined_text:
-                            anchor_end_time = segments[i+2]['end']
-                            print(f"✅ 앵커 발견 (병합)!")
-                            print(f"   텍스트: '{combined_text}'")
-                            print(f"   시간: {anchor_end_time:.2f}초 ({anchor_end_time/60:.2f}분)\n")
-                            break
-                    
-                    if anchor_end_time:
-                        break
-        
-        if anchor_end_time is None:
-            print(f"❌ 앵커를 찾지 못했습니다\n")
-            return False, None, None
-        
-        # 3. inaSpeechSegmenter로 음악/대화 구간 분석
-        if not HAS_INA or self.segmenter is None:
-            print("⚠️  inaSpeechSegmenter를 사용할 수 없습니다. 고정 시간 추출합니다.")
-            return self._extract_fixed(audio_path, anchor_end_time, base_name, result)
-        
-        print("🎼 음악 및 음성 세그먼트 분석 중...")
-        ina_segments = self.segmenter(audio_path)
-        
-        # 앵커 이후 세그먼트만 필터링
-        target_segments = [(label, start, end) for label, start, end in ina_segments if start >= anchor_end_time]
-        
-        if not target_segments:
-            print("⚠️  세그먼트를 찾지 못했습니다. 고정 시간 추출합니다.")
-            return self._extract_fixed(audio_path, anchor_end_time, base_name, result)
-        
-        print(f"\n📊 앵커 이후 세그먼트 (처음 15개):")
-        for i, (label, start, end) in enumerate(target_segments[:15]):
-            duration = end - start
-            print(f"  {i+1:2d}. {label:12s} {start:7.2f}초 ~ {end:7.2f}초 (길이: {duration:5.2f}초)")
-        if len(target_segments) > 15:
-            print(f"  ... 외 {len(target_segments)-15}개 세그먼트")
-        
-        # 4. 음악/대화 시작과 끝 찾기
-        extract_start = None
-        extract_end = None
-        
-        # 음악이나 영어 음성이 시작되는 지점 찾기
-        for label, start, end in target_segments:
-            if label in ['music', 'male', 'female']:
-                extract_start = start
-                break
-        
-        if extract_start is None:
-            print("\n⚠️  음악/대화 시작점을 찾지 못했습니다. 앵커 직후부터 시작합니다.")
-            extract_start = anchor_end_time
-        
-        # 음악/대화가 끝나는 지점 찾기
-        extract_end = extract_start
-        
-        # 개선된 종료 감지 로직
-        # - 짧은 침묵(3초 이하)은 허용 (질문-대답 사이)
-        # - 아주 긴 침묵(5초 이상)이나 한국어 음성이 나오면 종료
-        long_silence_threshold = 5.0  # 5초 이상 침묵: 대화 종료
-        
-        content_found = False  # music/male/female을 한 번이라도 만났는지
-        last_content_end = extract_start  # 마지막 콘텐츠가 끝난 시점
-        
-        for label, start, end in target_segments:
-            if start >= extract_start:
-                # music, male, female: 계속 포함
-                if label in ['music', 'male', 'female']:
-                    extract_end = end
-                    last_content_end = end
-                    content_found = True
-                    
-                elif label == 'noEnergy':
-                    duration = end - start
-                    # 아주 긴 침묵: 대화가 완전히 끝남
-                    if duration > long_silence_threshold and content_found:
-                        print(f"\n  ⏹️  긴 침묵 감지 ({duration:.2f}초 > {long_silence_threshold}초), 대화 종료")
-                        extract_end = last_content_end
-                        break
-                    # 짧은 침묵은 그냥 넘어감 (질문-대답 사이)
-                    
-                else:
-                    # 한국어 등 기타 음성: 즉시 종료
-                    if content_found:
-                        print(f"\n  ⏹️  한국어 음성 감지 (라벨: {label}), 대화 종료")
-                        extract_end = last_content_end
-                        break
         
         # 5. 오디오 추출
         duration = extract_end - extract_start
