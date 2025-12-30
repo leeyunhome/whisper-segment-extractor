@@ -208,120 +208,119 @@ class SmartConversationExtractor:
             print(f"❌ 앵커를 찾지 못했습니다\n")
             return False, None, None
         
-        # 2단계: 앵커 이후 구간만 영어로 재전사
-        print(f"🔄 2단계: 앵커 이후 영어 전사로 대화 추출...")
         
-        # 앵커 이후 5초부터 추출 (안전 마진)
-        english_start = max(search_start_time, anchor_end_time - 5)
-        english_start_ms = int(english_start * 1000)
+        # 2단계: 음악 구간 감지로 대화 추출
+        print(f"🔄 2단계: 음악 구간 감지 중...")
         
-        audio_english = audio_full[english_start_ms:]
-        temp_english_path = "temp_english.mp3"
-        audio_english.export(temp_english_path, format="mp3")
+        # inaSpeechSegmenter로 음악/대화 구간 분석
+        if not HAS_INA or self.segmenter is None:
+            print("❌ inaSpeechSegmenter가 필요합니다.")
+            print("다음 명령으로 설치하세요:")
+            print("  pip install inaSpeechSegmenter tensorflow\n")
+            return False, None, None
         
-        # 영어 전사
-        result_en = self.model.transcribe(
-            temp_english_path,
-            language='en',
-            initial_prompt="English conversation between native speakers.",
-            word_timestamps=False,
-            verbose=False,
-            no_speech_threshold=0.4,
-            condition_on_previous_text=False
-        )
+        print("🎼 음악 및 음성 세그먼트 분석 중...")
+        ina_segments = self.segmenter(audio_path)
         
-        # 시간 오프셋 보정
-        for segment in result_en['segments']:
-            segment['start'] += english_start
-            segment['end'] += english_start
+        # 앵커 이후 세그먼트만 필터링
+        target_segments = [(label, start, end) for label, start, end in ina_segments if start >= anchor_end_time]
         
-        os.remove(temp_english_path)
+        if not target_segments:
+            print("⚠️  앵커 이후 세그먼트를 찾지 못했습니다.\n")
+            return False, None, None
         
-        # 영어 전사 결과도 저장
-        transcription_en_path = f"transcription_en_{base_name}.json"
-        with open(transcription_en_path, 'w', encoding='utf-8') as f:
-            json.dump(result_en, f, ensure_ascii=False, indent=2)
-        print(f"💾 영어 전사 결과 저장: {transcription_en_path}\n")
+        print(f"\n📊 앵커 이후 세그먼트 (처음 20개):")
+        for i, (label, start, end) in enumerate(target_segments[:20]):
+            duration = end - start
+            print(f"  {i+1:2d}. {label:12s} {start:7.2f}초 ~ {end:7.2f}초 (길이: {duration:5.2f}초)")
+        if len(target_segments) > 20:
+            print(f"  ... 외 {len(target_segments)-20}개 세그먼트")
         
-        segments = result_en['segments']  # 이제 영어 세그먼트 사용
+        # 3. 음악 시작점 찾기 (앵커 이후 첫 음악)
+        extract_start = None
+        for label, start, end in target_segments:
+            if label == 'music':
+                extract_start = start
+                print(f"\n  🎵 음악 시작: {start:.2f}초 ({start/60:.2f}분)")
+                break
         
-        # 3. 영어 대화 구간 찾기 (영어 전사 기준)
-        print("📝 영어 대화 구간 탐지 중...")
+        if extract_start is None:
+            print("\n⚠️  음악을 찾지 못했습니다. 앵커 직후부터 시작합니다.")
+            extract_start = anchor_end_time
         
-        english_start_time = None
-        english_end_time = None
-        timeout = 60.0  # 앵커 후 60초 이내에 대화 시작해야 함
-        gap_threshold = 15.0  # 15초 이상 빈 구간이면 종료 (완화: 5 → 15)
-        last_end_time = anchor_end_time
         
-        # 첫 대화 세트 감지용
-        consecutive_valid = 0  # 연속된 유효 세그먼트 수
-        first_conversation_min_count = 3  # 최소 3개 연속 대화
-        first_conversation_found = False  # 첫 대화 세트 완료 여부
         
-        for segment in segments:
-            seg_start = segment['start']
-            seg_end = segment['end']
-            text = segment['text'].strip()
+        # 4. 음악 종료점 찾기 (음악 끝나고 한국어 계속 나오면 종료)
+        # 한국어 전사 데이터에서 앵커 이후 세그먼트 추출
+        korean_segments_after_anchor = [
+            (seg['start'], seg['end'], seg['text']) 
+            for seg in result_ko['segments'] 
+            if seg['start'] > anchor_end_time + 5  # 앵커 5초 후부터
+        ]
+        
+        print(f"\n  📋 앵커 이후 한국어 세그먼트 (처음 10개):")
+        for i, (start, end, text) in enumerate(korean_segments_after_anchor[:10]):
+            print(f"    {i+1}. [{start:.1f}s] {text[:50]}")
+        
+        extract_end = extract_start
+        segment_count = 0
+        
+        # 한국어 세그먼트의 연속성 분석: 진짜 한국어는 촘촘하게, 잘못된 전사는 드문드문
+        def find_teacher_explanation_start():
+            """연속된 한국어 세그먼트를 찾아 진짜 선생님 설명 시작점 반환"""
+            for i in range(len(korean_segments_after_anchor) - 2):
+                seg1_start, seg1_end, seg1_text = korean_segments_after_anchor[i]
+                seg2_start, seg2_end, seg2_text = korean_segments_after_anchor[i + 1]
+                seg3_start, seg3_end, seg3_text = korean_segments_after_anchor[i + 2]
+                
+                gap1 = seg2_start - seg1_start
+                gap2 = seg3_start - seg2_start
+                
+                # 3개 연속 세그먼트가 각각 5초 이내 간격 → 진짜 한국어 설명
+                if gap1 <= 5.0 and gap2 <= 5.0:
+                    print(f"\n  📍 진짜 한국어 설명 감지:")
+                    print(f"    [{seg1_start:.1f}s] {seg1_text[:30]}")
+                    print(f"    [{seg2_start:.1f}s] {seg2_text[:30]} (gap: {gap1:.1f}s)")
+                    print(f"    [{seg3_start:.1f}s] {seg3_text[:30]} (gap: {gap2:.1f}s)")
+                    return seg1_start
             
-            # 앵커 이후 세그먼트만 확인
-            if seg_start >= anchor_end_time:
-                # 타임아웃 체크
-                if english_start_time is None and seg_start > anchor_end_time + timeout:
-                    print(f"\n  ⏱️  타임아웃: 앵커 후 {timeout}초 내에 대화를 찾지 못했습니다")
+            return None
+        
+        teacher_start = find_teacher_explanation_start()
+        
+        print(f"\n  🔍 세그먼트 처리 중:")
+        for label, start, end in target_segments:
+            if start >= extract_start:
+                segment_count += 1
+                duration = end - start
+                
+                # 선생님 설명 시작점 도달하면 종료
+                if teacher_start and end > teacher_start:
+                    print(f"    {segment_count}. {label.upper():7s} [{start:.1f}s-{end:.1f}s] ({duration:.1f}s)")
+                    print(f"\n  ⏹️  선생님 설명 시작 ({teacher_start:.1f}s) 전에 추출 종료")
+                    print(f"  ⏹️  {extract_end:.2f}초에서 추출 종료")
                     break
                 
-                is_english = self._is_english_segment(text, debug=True)
-                
-                if is_english:
-                    # 첫 영어 세그먼트
-                    if english_start_time is None:
-                        english_start_time = seg_start
-                        print(f"  🎬 대화 시작: {seg_start:.1f}초")
+                if label == 'music':
+                    extract_end = end
+                    print(f"    {segment_count}. MUSIC   [{start:.1f}s-{end:.1f}s] ({duration:.1f}s) ✅ 포함 (extract_end={extract_end:.1f})")
                     
-                    # 끝 시간 업데이트
-                    english_end_time = seg_end
-                    last_end_time = seg_end
-                    consecutive_valid += 1
-                    print(f"  ✅ {seg_start:.1f}초 - {text[:70]}")
+                elif label in ['male', 'female']:
+                    extract_end = end
+                    print(f"    {segment_count}. {label.upper():7s} [{start:.1f}s-{end:.1f}s] ({duration:.1f}s) ✅ 포함 (extract_end={extract_end:.1f})")
                     
-                    # 첫 대화 세트가 충분히 쌓이면 표시
-                    if consecutive_valid >= first_conversation_min_count and not first_conversation_found:
-                        first_conversation_found = True
-                        print(f"  💬 첫 대화 세트 감지 ({consecutive_valid}개 연속)")
+                elif label == 'noEnergy':
+                    print(f"    {segment_count}. SILENCE [{start:.1f}s-{end:.1f}s] ({duration:.1f}s) ⏭️ 건너뜀")
                     
                 else:
-                    # 유효하지 않은 세그먼트
-                    # 첫 대화 세트를 찾았고, 긴 gap가 있으면 종료
-                    if first_conversation_found and english_start_time is not None:
-                        gap = seg_start - last_end_time
-                        if gap > 5.0:  # 첫 대화 후에는 5초만 gap 허용
-                            print(f"\n  🎯 첫 대화 세트 완료 후 {gap:.1f}초 공백 감지")
-                            print(f"  ⏹️  선생님 설명 전에 종료합니다")
-                            break
-                    
-                    # 대화가 시작했지만 첫 세트를 못 찾았으면 15초 gap 허용
-                    if english_start_time is not None and not first_conversation_found:
-                        gap = seg_start - last_end_time
-                        if gap > gap_threshold:
-                            print(f"\n  ⏹️  {gap:.1f}초 공백 감지, 대화 종료")
-                            break
-                    
-                    consecutive_valid = 0  # 연속성 리셋
-                    print(f"  ⏭️  {seg_start:.1f}초 - {text[:50]} (무시)")
-
-
+                    print(f"    {segment_count}. {label.upper():7s} [{start:.1f}s-{end:.1f}s] ({duration:.1f}s) ⏭️ 건너뜀")
         
-        if english_end_time is None or english_start_time is None:
-            print("⚠️  영어 대화 구간을 찾지 못했습니다. 고정 시간 추출합니다.")
-            return self._extract_fixed(audio_path, anchor_end_time, base_name, result)
+        print(f"\n  총 처리한 세그먼트: {segment_count}개")
         
-        # 4. 추출 시작점 설정: 첫 영어 세그먼트부터
-        extract_start = english_start_time
-        extract_end = english_end_time
-        print(f"\n✅ 첫 영어 세그먼트: {extract_start:.2f}초 ({extract_start/60:.2f}분)")
-        print(f"✅ 마지막 영어 세그먼트: {extract_end:.2f}초 ({extract_end/60:.2f}분)")
-
+        
+        
+        
+        
         
         # 5. 오디오 추출
         duration = extract_end - extract_start
@@ -348,8 +347,8 @@ class SmartConversationExtractor:
         actual_duration = len(extracted) / 1000
         print(f"✅ 추출 완료: {actual_duration:.1f}초\n")
         
-        # 6. 대화 스크립트 텍스트 추출
-        script_text = self.extract_script_text(result_en, extract_start, extract_end)
+        # 6. 대화 스크립트 텍스트 추출 (한국어 전사 사용)
+        script_text = self.extract_script_text(result_ko, extract_start, extract_end)
         script_path = f"script_{base_name}.txt"
         
         with open(script_path, 'w', encoding='utf-8') as f:
