@@ -66,6 +66,29 @@ class SmartConversationExtractor:
                 script_lines.append(f"{timestamp} {text}")
         
         return "\n".join(script_lines)
+
+    def extract_player_data(self, transcription, start_time, end_time):
+        """
+        웹 플레이어용 데이터 추출 (상대 시간)
+        """
+        player_data = []
+        
+        for segment in transcription['segments']:
+            seg_start = segment['start']
+            seg_end = segment['end']
+            
+            if seg_start <= end_time and seg_end >= start_time:
+                # 상대 시간 계산 (추출된 오디오의 시작이 0초)
+                rel_start = max(0, seg_start - start_time)
+                rel_end = min(end_time - start_time, seg_end - start_time)
+                
+                player_data.append({
+                    "start": round(rel_start, 2),
+                    "end": round(rel_end, 2),
+                    "text": segment['text'].strip()
+                })
+        
+        return player_data
     
     def _is_korean(self, text):
         """텍스트에 한글이 포함되어 있는지 확인"""
@@ -318,10 +341,6 @@ class SmartConversationExtractor:
         print(f"\n  총 처리한 세그먼트: {segment_count}개")
         
         
-        
-        
-        
-        
         # 5. 오디오 추출
         duration = extract_end - extract_start
         print(f"\n✂️  구간 추출:")
@@ -360,208 +379,27 @@ class SmartConversationExtractor:
             f.write(script_text)
         
         print(f"📝 대화 스크립트 저장: {script_path}\n")
-        
-        return True, anchor_end_time, output_path
-        """
-        음악 기반 지능형 추출
-        
-        Returns:
-            (성공 여부, 앵커 시간, 추출 파일 경로)
-        """
-        print(f"{'='*80}")
-        print(f"🎵 파일: {os.path.basename(audio_path)}")
-        print(f"{'='*80}\n")
-        
-        # 1. 오디오를 23분부터만 로드하여 전사 (속도 향상)
-        print(f"🔄 오디오 로딩 및 전사 중 ({search_start_time/60:.1f}분부터)...")
-        
-        # 23분부터 오디오 추출
-        audio_full = AudioSegment.from_mp3(audio_path)
-        start_ms = search_start_time * 1000
-        audio_segment = audio_full[start_ms:]
-        
-        # 임시 파일로 저장
-        temp_path = "temp_segment.mp3"
-        audio_segment.export(temp_path, format="mp3")
-        
-        # 전사 (23분 이후만)
-        result = self.model.transcribe(
-            temp_path,
-            language='ko',
+
+        print(f"📝 대화 스크립트 저장: {script_path}\n")
+
+        # 7. 원어민 대화 전용 영어 전사 (웹 플레이어용)
+        print(f"🔄 7단계: 원어민 대화 고품질 영어 전사 중...")
+        result_en = self.model.transcribe(
+            output_path,
+            language='en',
             word_timestamps=False,
             verbose=False
         )
         
-        # 시간 오프셋 보정 (23분 추가)
-        for segment in result['segments']:
-            segment['start'] += search_start_time
-            segment['end'] += search_start_time
-        
-        # 임시 파일 삭제
-        os.remove(temp_path)
-        
-        # 전사 결과 저장
-        base_name = Path(audio_path).stem
-        transcription_path = f"transcription_{base_name}.json"
-        with open(transcription_path, 'w', encoding='utf-8') as f:
-            json.dump(result, f, ensure_ascii=False, indent=2)
-        print(f"💾 전사 결과 저장: {transcription_path}\n")
-        
-        # 2. 앵커 검색
-        print(f"🔍 앵커 문구 검색 중...")
-        anchor_end_time = None
-        segments = result['segments']
-        
-        # 단일 세그먼트 검색
-        for segment in segments:
-            text = segment['text'].strip()
-            
-            for anchor in anchor_phrases:
-                if anchor in text:
-                    anchor_end_time = segment['end']
-                    print(f"✅ 앵커 발견!")
-                    print(f"   텍스트: '{text}'")
-                    print(f"   시간: {anchor_end_time:.2f}초 ({anchor_end_time/60:.2f}분)\n")
-                    break
-            
-            if anchor_end_time:
-                break
-        
-        # 병합 검색
-        if anchor_end_time is None:
-            print(f"🔍 연속 세그먼트 병합 검색 중...")
-            for i, segment in enumerate(segments):
-                if i < len(segments) - 2:
-                    combined_text = (
-                        segment['text'] + 
-                        segments[i+1]['text'] + 
-                        segments[i+2]['text']
-                    ).strip()
-                    
-                    for anchor in anchor_phrases:
-                        if anchor in combined_text:
-                            anchor_end_time = segments[i+2]['end']
-                            print(f"✅ 앵커 발견 (병합)!")
-                            print(f"   텍스트: '{combined_text}'")
-                            print(f"   시간: {anchor_end_time:.2f}초 ({anchor_end_time/60:.2f}분)\n")
-                            break
-                    
-                    if anchor_end_time:
-                        break
-        
-        if anchor_end_time is None:
-            print(f"❌ 앵커를 찾지 못했습니다\n")
-            return False, None, None
-        
-        # 3. inaSpeechSegmenter로 음악/대화 구간 분석
-        if not HAS_INA or self.segmenter is None:
-            print("⚠️  inaSpeechSegmenter를 사용할 수 없습니다. 고정 시간 추출합니다.")
-            return self._extract_fixed(audio_path, anchor_end_time, base_name, result)
-        
-        print("🎼 음악 및 음성 세그먼트 분석 중...")
-        ina_segments = self.segmenter(audio_path)
-        
-        # 앵커 이후 세그먼트만 필터링
-        target_segments = [(label, start, end) for label, start, end in ina_segments if start >= anchor_end_time]
-        
-        if not target_segments:
-            print("⚠️  세그먼트를 찾지 못했습니다. 고정 시간 추출합니다.")
-            return self._extract_fixed(audio_path, anchor_end_time, base_name, result)
-        
-        print(f"\n📊 앵커 이후 세그먼트 (처음 15개):")
-        for i, (label, start, end) in enumerate(target_segments[:15]):
-            duration = end - start
-            print(f"  {i+1:2d}. {label:12s} {start:7.2f}초 ~ {end:7.2f}초 (길이: {duration:5.2f}초)")
-        if len(target_segments) > 15:
-            print(f"  ... 외 {len(target_segments)-15}개 세그먼트")
-        
-        # 4. 음악/대화 시작과 끝 찾기
-        extract_start = None
-        extract_end = None
-        
-        # 음악이나 영어 음성이 시작되는 지점 찾기
-        for label, start, end in target_segments:
-            if label in ['music', 'male', 'female']:
-                extract_start = start
-                break
-        
-        if extract_start is None:
-            print("\n⚠️  음악/대화 시작점을 찾지 못했습니다. 앵커 직후부터 시작합니다.")
-            extract_start = anchor_end_time
-        
-        # 음악/대화가 끝나는 지점 찾기
-        extract_end = extract_start
-        
-        # 개선된 종료 감지 로직
-        # - 짧은 침묵(3초 이하)은 허용 (질문-대답 사이)
-        # - 아주 긴 침묵(5초 이상)이나 한국어 음성이 나오면 종료
-        long_silence_threshold = 5.0  # 5초 이상 침묵: 대화 종료
-        
-        content_found = False  # music/male/female을 한 번이라도 만났는지
-        last_content_end = extract_start  # 마지막 콘텐츠가 끝난 시점
-        
-        for label, start, end in target_segments:
-            if start >= extract_start:
-                # music, male, female: 계속 포함
-                if label in ['music', 'male', 'female']:
-                    extract_end = end
-                    last_content_end = end
-                    content_found = True
-                    
-                elif label == 'noEnergy':
-                    duration = end - start
-                    # 아주 긴 침묵: 대화가 완전히 끝남
-                    if duration > long_silence_threshold and content_found:
-                        print(f"\n  ⏹️  긴 침묵 감지 ({duration:.2f}초 > {long_silence_threshold}초), 대화 종료")
-                        extract_end = last_content_end
-                        break
-                    # 짧은 침묵은 그냥 넘어감 (질문-대답 사이)
-                    
-                else:
-                    # 한국어 등 기타 음성: 즉시 종료
-                    if content_found:
-                        print(f"\n  ⏹️  한국어 음성 감지 (라벨: {label}), 대화 종료")
-                        extract_end = last_content_end
-                        break
-        
-        # 5. 오디오 추출
-        duration = extract_end - extract_start
-        print(f"\n✂️  구간 추출:")
-        print(f"   시작: {extract_start:.2f}초 ({extract_start/60:.2f}분)")
-        print(f"   종료: {extract_end:.2f}초 ({extract_end/60:.2f}분)")
-        print(f"   길이: {duration:.2f}초\n")
-        
-        start_ms = int(extract_start * 1000)
-        end_ms = int(extract_end * 1000)
-        
-        extracted = audio_full[start_ms:end_ms]
-        
-        # MP3 저장
-        output_path = f"extracted_{base_name}.mp3"
-        print(f"💾 저장 중: {output_path}")
-        extracted.export(
-            output_path,
-            format='mp3',
-            bitrate='320k',
-            parameters=["-q:a", "0"]
-        )
-        
-        actual_duration = len(extracted) / 1000
-        print(f"✅ 추출 완료: {actual_duration:.1f}초\n")
-        
-        # 6. 대화 스크립트 텍스트 추출
-        script_text = self.extract_script_text(result, extract_start, extract_end)
-        script_path = f"script_{base_name}.txt"
-        
-        with open(script_path, 'w', encoding='utf-8') as f:
-            f.write(f"{'='*80}\n")
-            f.write(f"대화 스크립트: {os.path.basename(audio_path)}\n")
-            f.write(f"{'='*80}\n")
-            f.write(f"구간: {extract_start:.2f}초 ~ {extract_end:.2f}초 ({duration:.2f}초)\n")
-            f.write(f"{'='*80}\n\n")
-            f.write(script_text)
-        
-        print(f"📝 대화 스크립트 저장: {script_path}\n")
+        # 8. 웹 플레이어용 JSON 데이터 저장 (영어 전사 결과 사용, 0초 기준)
+        player_data = self.extract_player_data(result_en, 0, actual_duration)
+        player_json_path = f"player_{base_name}.json"
+        with open(player_json_path, 'w', encoding='utf-8') as f:
+            json.dump({
+                "audio": output_path,
+                "script": player_data
+            }, f, ensure_ascii=False, indent=2)
+        print(f"📱 웹 플레이어 데이터 저장(영어): {player_json_path}\n")
         
         return True, anchor_end_time, output_path
     
@@ -607,6 +445,25 @@ class SmartConversationExtractor:
             f.write(script_text)
         
         print(f"📝 대화 스크립트 저장: {script_path}\n")
+
+        # 원어민 대화 전용 영어 전사 (웹 플레이어용)
+        print(f"🔄 원어민 대화 고품질 영어 전사 중 (고정 구간)...")
+        result_en = self.model.transcribe(
+            output_path,
+            language='en',
+            word_timestamps=False,
+            verbose=False
+        )
+
+        # 웹 플레이어용 JSON 데이터 저장 (영어 전사 결과 사용, 0초 기준)
+        player_data = self.extract_player_data(result_en, 0, duration)
+        player_json_path = f"player_{base_name}.json"
+        with open(player_json_path, 'w', encoding='utf-8') as f:
+            json.dump({
+                "audio": output_path,
+                "script": player_data
+            }, f, ensure_ascii=False, indent=2)
+        print(f"📱 웹 플레이어 데이터 저장 (영어/고정 구간): {player_json_path}\n")
         
         return True, anchor_end_time, output_path
     

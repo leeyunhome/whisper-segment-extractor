@@ -1,0 +1,40 @@
+{
+  "audio": "extracted_20251230_173000_59b81a3e_mp3.mp3",
+  "script": [
+    {
+      "start": 0,
+      "end": 7.0,
+      "text": "Is there anything you regret this year?"
+    },
+    {
+      "start": 7.0,
+      "end": 12.0,
+      "text": "I regret not saving more money."
+    },
+    {
+      "start": 12.0,
+      "end": 21.0,
+      "text": "I regret not saving more money."
+    },
+    {
+      "start": 21.0,
+      "end": 27.0,
+      "text": "I regret not spending more time with my family."
+    },
+    {
+      "start": 27.0,
+      "end": 35.0,
+      "text": "I regret not spending more time with my family."
+    },
+    {
+      "start": 35.0,
+      "end": 40.0,
+      "text": "Well, we still have a whole new year, right?"
+    },
+    {
+      "start": 40.0,
+      "end": 48.0,
+      "text": "Well, we still have a whole new year, right?"
+    }
+  ]
+}

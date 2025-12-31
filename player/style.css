@@ -1,0 +1,121 @@
+:root {
+    --primary-color: #4a90e2;
+    --bg-color: #f5f7fa;
+    --card-bg: rgba(255, 255, 255, 0.8);
+    --text-color: #333;
+    --active-line: #eef2ff;
+    --highlight: #4a90e2;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(135deg, #e0eafc 0%, #cfdef3 100%);
+    color: var(--text-color);
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+.container {
+    width: 90%;
+    max-width: 600px;
+    background: var(--card-bg);
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    height: 80vh;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+h1 {
+    font-size: 1.5rem;
+    margin: 0;
+    color: var(--primary-color);
+}
+
+#file-title {
+    font-size: 0.9rem;
+    color: #666;
+    margin-top: 0.5rem;
+}
+
+.player-section {
+    margin-bottom: 1.5rem;
+}
+
+audio {
+    width: 100%;
+    border-radius: 10px;
+}
+
+.script-section {
+    flex-grow: 1;
+    overflow-y: auto;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 15px;
+    padding: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+#script-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.script-line {
+    padding: 0.8rem;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    line-height: 1.6;
+}
+
+.script-line:hover {
+    background: rgba(74, 144, 226, 0.1);
+}
+
+.script-line.active {
+    background: var(--active-line);
+    border-left: 4px solid var(--highlight);
+    font-weight: 600;
+    transform: translateX(5px);
+}
+
+footer {
+    margin-top: 1.5rem;
+    text-align: center;
+}
+
+#load-btn {
+    padding: 0.8rem 1.5rem;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 30px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.3s;
+}
+
+#load-btn:hover {
+    background: #357abd;
+}
+
+/* Custom Scrollbar */
+.script-section::-webkit-scrollbar {
+    width: 6px;
+}
+.script-section::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+}
