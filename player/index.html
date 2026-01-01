@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shadowing Player</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>EBS Shadowing Player</h1>
+            <p id="file-title">파일을 로드해주세요</p>
+        </header>
+
+        <main>
+            <div class="player-section">
+                <audio id="audio-player" controls></audio>
+            </div>
+
+            <div class="script-section">
+                <div id="script-container">
+                    <!-- 스크립트가 로드되면 여기에 나타납니다 -->
+                    <p class="loading">전사 데이터를 불러오는 중...</p>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <div class="controls">
+                <button id="load-btn">파일 열기 (JSON & MP3 선택)</button>
+                <input type="file" id="file-input" style="display: none;" accept=".json,.mp3" multiple>
+            </div>
+        </footer>
+    </div>
+    <script src="app.js"></script>
+</body>
+
+</html>
