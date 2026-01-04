@@ -1,0 +1,25 @@
+{
+  "audio": "extracted_20251231_173000_fe521601_mp3.mp3",
+  "script": [
+    {
+      "start": 0,
+      "end": 10.0,
+      "text": "As always, thank you for watching WCB English."
+    },
+    {
+      "start": 15.0,
+      "end": 24.0,
+      "text": "We hope you learned a lot with us this year."
+    },
+    {
+      "start": 30.0,
+      "end": 42.0,
+      "text": "We have great content for next year too."
+    },
+    {
+      "start": 43.0,
+      "end": 56.0,
+      "text": "Happy New Year everyone! Stay tuned!"
+    }
+  ]
+}

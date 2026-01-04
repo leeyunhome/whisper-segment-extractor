@@ -90,8 +90,24 @@ class SmartConversationExtractor:
         
         return player_data
     
+    def _is_mostly_korean(self, text):
+        """텍스트의 절반 이상이 한글인지 확인 (영어 문장에 한글이 섞인 경우 제외)"""
+        korean_count = 0
+        total_count = 0
+        for char in text:
+            if char.isspace():
+                continue
+            total_count += 1
+            if '가' <= char <= '힣':
+                korean_count += 1
+        
+        if total_count == 0:
+            return False
+            
+        return (korean_count / total_count) > 0.5
+
     def _is_korean(self, text):
-        """텍스트에 한글이 포함되어 있는지 확인"""
+        """텍스트에 한글이 포함되어 있는지 확인For legacy support of simple check"""
         for char in text:
             if '가' <= char <= '힣':
                 return True
@@ -137,7 +153,7 @@ class SmartConversationExtractor:
         return True
     
     def find_anchor_and_extract_smart(self, audio_path,
-                                      search_start_time=1380,
+                                      search_start_time=1260,
                                       anchor_phrases=["전체대화 주세요", "전체대화", "전체 대화", "전체되어", "전체 되어"]):
         """
         음악 기반 지능형 추출 + Whisper 전사로 영어 구간만 필터링
@@ -275,7 +291,7 @@ class SmartConversationExtractor:
         korean_segments_after_anchor = [
             (seg['start'], seg['end'], seg['text']) 
             for seg in result_ko['segments'] 
-            if seg['start'] > anchor_end_time + 5  # 앵커 5초 후부터
+            if seg['start'] > anchor_end_time + 5 and self._is_mostly_korean(seg['text']) # 실제로 "주로" 한국어가 포함된 것만 (혼합된 영어 문장 제외)
         ]
         
         print(f"\n  📋 앵커 이후 한국어 세그먼트 (처음 10개):")
@@ -308,6 +324,26 @@ class SmartConversationExtractor:
         
         teacher_start = find_teacher_explanation_start()
         
+        # [NEW] 명시적 종료 문구 확인 (사용자 요청)
+        def find_explicit_stop_phrase():
+            """명시적인 종료 문구("입으로 하는 영작") 감지"""
+            stop_phrases = ["입으로 하는 영작", "입영작"]
+            for start, end, text in korean_segments_after_anchor:
+                for phrase in stop_phrases:
+                    if phrase in text:
+                        print(f"\n  🛑 명시적 종료 문구 발견: '{phrase}'")
+                        print(f"    [{start:.1f}s] {text}")
+                        return start
+            return None
+
+        explicit_stop = find_explicit_stop_phrase()
+        
+        # 두 가지 기준 중 더 빠른 시간 선택
+        if teacher_start and explicit_stop:
+            teacher_start = min(teacher_start, explicit_stop)
+        elif explicit_stop:
+            teacher_start = explicit_stop
+        
         print(f"\n  🔍 세그먼트 처리 중:")
         for label, start, end in target_segments:
             if start >= extract_start:
@@ -317,8 +353,14 @@ class SmartConversationExtractor:
                 # 선생님 설명 시작점 도달하면 종료
                 if teacher_start and end > teacher_start:
                     print(f"    {segment_count}. {label.upper():7s} [{start:.1f}s-{end:.1f}s] ({duration:.1f}s)")
-                    print(f"\n  ⏹️  선생님 설명 시작 ({teacher_start:.1f}s) 전에 추출 종료")
-                    print(f"  ⏹️  {extract_end:.2f}초에서 추출 종료")
+                    
+                    # 세그먼트 도중 선생님 설명이 시작되는 경우 (겹침) -> 해당 지점까지 포함
+                    if start < teacher_start:
+                        extract_end = teacher_start
+                        print(f"  ✂️  세그먼트 중간 자르기: {start:.1f}s ~ {teacher_start:.1f}s (Music/Speech 부분만)")
+                    
+                    print(f"\n  ⏹️  선생님 설명 시작 ({teacher_start:.1f}s) 감지")
+                    print(f"  ⏹️  최종 추출 종료 지점: {extract_end:.2f}초")
                     break
                 
                 if label == 'music':

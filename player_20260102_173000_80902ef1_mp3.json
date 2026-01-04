@@ -1,0 +1,25 @@
+{
+  "audio": "extracted_20260102_173000_80902ef1_mp3.mp3",
+  "script": [
+    {
+      "start": 0,
+      "end": 11.0,
+      "text": "Do you have any student discounts?"
+    },
+    {
+      "start": 11.0,
+      "end": 28.0,
+      "text": "Yes, we offer a 10% discount for college students."
+    },
+    {
+      "start": 28.0,
+      "end": 36.0,
+      "text": "What do I need to show?"
+    },
+    {
+      "start": 36.0,
+      "end": 42.0,
+      "text": "You just need to show me your student ID."
+    }
+  ]
+}
