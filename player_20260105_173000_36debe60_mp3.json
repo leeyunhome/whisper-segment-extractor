@@ -1,0 +1,25 @@
+{
+  "audio": "extracted_20260105_173000_36debe60_mp3.mp3",
+  "script": [
+    {
+      "start": 0,
+      "end": 10.0,
+      "text": "Do you have any New Year's resolutions?"
+    },
+    {
+      "start": 10.0,
+      "end": 28.0,
+      "text": "I'm going to exercise on a regular basis."
+    },
+    {
+      "start": 28.0,
+      "end": 40.0,
+      "text": "No more late nights next then?"
+    },
+    {
+      "start": 40.0,
+      "end": 53.0,
+      "text": "Well, I didn't say that."
+    }
+  ]
+}

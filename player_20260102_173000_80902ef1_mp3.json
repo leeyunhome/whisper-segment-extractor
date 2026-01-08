@@ -3,6 +3,7 @@
   "script": [
     {
       "start": 0,
+<<<<<<< HEAD
       "end": 11.0,
       "text": "Do you have any student discounts?"
     },
@@ -20,6 +21,15 @@
       "start": 36.0,
       "end": 42.0,
       "text": "You just need to show me your student ID."
+=======
+      "end": 3.5,
+      "text": "Do you have any student discounts?"
+    },
+    {
+      "start": 3.5,
+      "end": 8.26,
+      "text": "Yes, we offer a 10% discount for college students."
+>>>>>>> 5eb29b6 (today's work)
     }
   ]
 }
