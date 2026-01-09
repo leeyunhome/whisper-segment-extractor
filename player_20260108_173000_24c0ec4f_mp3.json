@@ -1,0 +1,25 @@
+{
+  "audio": "extracted_20260108_173000_24c0ec4f_mp3.mp3",
+  "script": [
+    {
+      "start": 0,
+      "end": 9.0,
+      "text": "Are you okay? Why are you crying?"
+    },
+    {
+      "start": 11.0,
+      "end": 19.0,
+      "text": "I just broke up with Emily."
+    },
+    {
+      "start": 23.0,
+      "end": 28.0,
+      "text": "Cheer up man, you'll find someone better."
+    },
+    {
+      "start": 28.0,
+      "end": 35.0,
+      "text": "I just can't get over her."
+    }
+  ]
+}
