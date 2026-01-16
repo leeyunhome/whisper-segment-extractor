@@ -1,0 +1,45 @@
+{
+  "audio": "extracted_20260115_173000_11658bc4_mp3.mp3",
+  "script": [
+    {
+      "start": 0,
+      "end": 1.0,
+      "text": "Welcome to the world."
+    },
+    {
+      "start": 1.0,
+      "end": 2.0,
+      "text": "주세요."
+    },
+    {
+      "start": 2.0,
+      "end": 3.0,
+      "text": "Come on."
+    },
+    {
+      "start": 3.0,
+      "end": 9.0,
+      "text": "You're smart, handsome and funny."
+    },
+    {
+      "start": 19.62,
+      "end": 23.88,
+      "text": "She is going to regret dumping you."
+    },
+    {
+      "start": 23.88,
+      "end": 30.88,
+      "text": "Actually, we broke up mutually."
+    },
+    {
+      "start": 41.88,
+      "end": 43.88,
+      "text": "Oh, my bad."
+    },
+    {
+      "start": 43.88,
+      "end": 48.88,
+      "text": "Anyway, let's go and eat something."
+    }
+  ]
+}

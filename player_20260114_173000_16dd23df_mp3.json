@@ -1,0 +1,25 @@
+{
+  "audio": "extracted_20260114_173000_16dd23df_mp3.mp3",
+  "script": [
+    {
+      "start": 0,
+      "end": 7.0,
+      "text": "How long will it take?"
+    },
+    {
+      "start": 8.0,
+      "end": 24.0,
+      "text": "Give us two days. Do you need it urgently?"
+    },
+    {
+      "start": 24.0,
+      "end": 35.0,
+      "text": "No, that's fine. How much is it?"
+    },
+    {
+      "start": 36.0,
+      "end": 49.0,
+      "text": "Twenty dollars. It'll be like new."
+    }
+  ]
+}

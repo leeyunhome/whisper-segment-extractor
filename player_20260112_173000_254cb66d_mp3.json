@@ -1,0 +1,30 @@
+{
+  "audio": "extracted_20260112_173000_254cb66d_mp3.mp3",
+  "script": [
+    {
+      "start": 0,
+      "end": 10.0,
+      "text": "Honey, our landlord wants to raise the rent."
+    },
+    {
+      "start": 14.0,
+      "end": 22.0,
+      "text": "He already raised it last year."
+    },
+    {
+      "start": 22.0,
+      "end": 38.0,
+      "text": "He wants an extra $200 per month."
+    },
+    {
+      "start": 38.0,
+      "end": 52.0,
+      "text": "We can't afford that."
+    },
+    {
+      "start": 52.0,
+      "end": 55.38,
+      "text": "They will have another problem."
+    }
+  ]
+}

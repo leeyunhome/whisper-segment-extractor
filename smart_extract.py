@@ -185,13 +185,8 @@ class SmartConversationExtractor:
         return True
     
     def find_anchor_and_extract_smart(self, audio_path,
-<<<<<<< HEAD
                                       search_start_time=1260,
                                       anchor_phrases=["전체대화 주세요", "전체대화", "전체 대화", "전체되어", "전체 되어"]):
-=======
-                                      search_start_time=1300,
-                                      anchor_phrases=["주세요", "전체대화 주세요", "전체대화", "전체 대화", "전체되어", "전체 되어"]):
->>>>>>> 5eb29b6 (today's work)
         """
         음악 기반 지능형 추출 + Whisper 전사로 영어 구간만 필터링
         
@@ -373,11 +368,7 @@ class SmartConversationExtractor:
         korean_segments_after_anchor = [
             (seg['start'], seg['end'], seg['text']) 
             for seg in result_ko['segments'] 
-<<<<<<< HEAD
             if seg['start'] > anchor_end_time + 5 and self._is_mostly_korean(seg['text']) # 실제로 "주로" 한국어가 포함된 것만 (혼합된 영어 문장 제외)
-=======
-            if seg['start'] > anchor_end_time + 10 and self._is_korean(seg['text'])  # 앵커 10초 후부터
->>>>>>> 5eb29b6 (today's work)
         ]
         
         print(f"  한국어 세그먼트 {len(korean_segments_after_anchor)}개 발견")
@@ -386,7 +377,6 @@ class SmartConversationExtractor:
         music_segments = [(start, end) for label, start, end in target_segments if label == 'music']
         print(f"  음악 세그먼트 {len(music_segments)}개 발견")
         
-<<<<<<< HEAD
         # 한국어 세그먼트의 연속성 분석: 진짜 한국어는 촘촘하게, 잘못된 전사는 드문드문
         def find_teacher_explanation_start():
             """연속된 한국어 세그먼트를 찾아 진짜 선생님 설명 시작점 반환"""
@@ -431,6 +421,7 @@ class SmartConversationExtractor:
             teacher_start = explicit_stop
         
         print(f"\n  🔍 세그먼트 처리 중:")
+        segment_count = 0
         for label, start, end in target_segments:
             if start >= extract_start:
                 segment_count += 1
@@ -444,22 +435,16 @@ class SmartConversationExtractor:
                     if start < teacher_start:
                         extract_end = teacher_start
                         print(f"  ✂️  세그먼트 중간 자르기: {start:.1f}s ~ {teacher_start:.1f}s (Music/Speech 부분만)")
+                    elif extract_end is None:
+                         # 선생님 설명 바로 직전 세그먼트가 영어 세그먼트인 경우
+                         extract_end = end
                     
                     print(f"\n  ⏹️  선생님 설명 시작 ({teacher_start:.1f}s) 감지")
-                    print(f"  ⏹️  최종 추출 종료 지점: {extract_end:.2f}초")
-=======
-        # 음악 세그먼트를 역순으로 탐색 (마지막부터)
-        # 각 음악 직후(10초 이내)에 한국어가 나오는지 확인
-        for music_start, music_end in reversed(music_segments):
-            # 이 음악 이후 10초 이내에 한국어가 시작되는지 확인
-            for ko_start, ko_end, ko_text in korean_segments_after_anchor:
-                gap = ko_start - music_end
-                if 0 <= gap <= 10.0:  # 음악 끝나고 10초 이내에 한국어 시작
-                    extract_end = music_end
-                    print(f"  ✅ 종료점 발견:")
-                    print(f"     마지막 음악: {music_start:.2f}s ~ {music_end:.2f}s")
-                    print(f"     이후 한국어: {ko_start:.2f}s ({gap:.1f}초 후) - '{ko_text[:30]}'")
->>>>>>> 5eb29b6 (today's work)
+                    if extract_end:
+                        print(f"  ⏹️  최종 추출 종료 지점: {extract_end:.2f}초")
+                    else:
+                        print(f"  ⏹️  최종 추출 종료 지점: (설정되지 않음)")
+                    break
                     break
             
             if extract_end:
