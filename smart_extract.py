@@ -379,17 +379,31 @@ class SmartConversationExtractor:
         
         # 한국어 세그먼트의 연속성 분석: 진짜 한국어는 촘촘하게, 잘못된 전사는 드문드문
         def find_teacher_explanation_start():
-            """연속된 한국어 세그먼트를 찾아 진짜 선생님 설명 시작점 반환"""
+            """연속된 한국어 세그먼트를 찾아 진짜 선생님 설명 시작점 반환 (다양성 체크 추가)"""
+            min_duration_after_anchor = 20  # 앵커 이후 최소 20초는 추출 유지 (대화 길이 보장)
+            
             for i in range(len(korean_segments_after_anchor) - 2):
                 seg1_start, seg1_end, seg1_text = korean_segments_after_anchor[i]
                 seg2_start, seg2_end, seg2_text = korean_segments_after_anchor[i + 1]
                 seg3_start, seg3_end, seg3_text = korean_segments_after_anchor[i + 2]
                 
+                # 앵커 직후 너무 이른 시점은 무시
+                if seg1_start < anchor_end_time + min_duration_after_anchor:
+                    continue
+                    
                 gap1 = seg2_start - seg1_start
                 gap2 = seg3_start - seg2_start
                 
-                # 3개 연속 세그먼트가 각각 5초 이내 간격 → 진짜 한국어 설명
-                if gap1 <= 5.0 and gap2 <= 5.0:
+                # 텍스트 다양성 체크: 3개 문장이 모두 비슷하면 환각일 가능성이 높음
+                from difflib import SequenceMatcher
+                def is_too_similar(t1, t2):
+                    return SequenceMatcher(None, t1, t2).ratio() > 0.8
+                
+                # 문장들이 서로 충분히 다른지 확인 (환각/반복 번역 방지)
+                is_repetitive = is_too_similar(seg1_text, seg2_text) or is_too_similar(seg2_text, seg3_text)
+                
+                # 3개 연속 세그먼트가 각각 5초 이내 간격 + 문장이 서로 다름 → 진짜 한국어 설명
+                if gap1 <= 5.0 and gap2 <= 5.0 and not is_repetitive:
                     print(f"\n  📍 진짜 한국어 설명 감지:")
                     print(f"    [{seg1_start:.1f}s] {seg1_text[:30]}")
                     print(f"    [{seg2_start:.1f}s] {seg2_text[:30]} (gap: {gap1:.1f}s)")
