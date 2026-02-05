@@ -23,6 +23,7 @@ extracted_*.mp3
 script_*.txt
 transcription_*.json
 temp_*.mp3
+player_*.json
 *.wav
 *.mp3
 

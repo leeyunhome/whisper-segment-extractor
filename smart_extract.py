@@ -668,7 +668,7 @@ class SmartConversationExtractor:
 def main():
     """메인 함수"""
     parser = argparse.ArgumentParser(description='EBS 영어 강의 대화 구간 자동 추출')
-    parser.add_argument('--file', '-f', type=str, help='처리할 특정 MP3 파일 경로')
+    parser.add_argument('files', nargs='*', help='처리할 MP3 파일 경로 (직접 지정 시 사용)')
     parser.add_argument('--folder', type=str, default='.', help='처리할 폴더 (기본: 현재 폴더)')
     parser.add_argument('--model', type=str, default='tiny', choices=['tiny', 'base', 'small', 'medium', 'large'],
                        help='Whisper 모델 크기 (기본: tiny)')
@@ -687,20 +687,27 @@ def main():
     
     extractor = SmartConversationExtractor(model_size=args.model)
     
-    # 단일 파일 처리
-    if args.file:
-        if not os.path.exists(args.file):
-            print(f"❌ 파일을 찾을 수 없습니다: {args.file}")
-            return
-        
+    # 직접 지정한 파일들 처리
+    if args.files:
         extractor.load_models()
-        success, anchor_time, output_path = extractor.find_anchor_and_extract_smart(args.file)
         
-        if success:
-            print(f"\n✅ 처리 완료!")
-            print(f"   출력 파일: {output_path}")
-        else:
-            print("\n❌ 처리 실패")
+        print(f"\n{'='*80}")
+        print(f"🎯 선택된 {len(args.files)}개 파일 처리")
+        print(f"{'='*80}\n")
+        
+        for i, file_path in enumerate(args.files, 1):
+            if not os.path.exists(file_path):
+                print(f"❌ 파일을 찾을 수 없습니다: {file_path}\n")
+                continue
+            
+            print(f"[{i}/{len(args.files)}] 파일 처리 중: {file_path}")
+            success, anchor_time, output_path = extractor.find_anchor_and_extract_smart(file_path)
+            
+            if success:
+                print(f"✅ '{file_path}' 처리 완료!")
+                print(f"   출력: {output_path}\n")
+            else:
+                print(f"❌ '{file_path}' 처리 실패\n")
     
     # 폴더 전체 처리
     else:
