@@ -186,7 +186,9 @@ class SmartConversationExtractor:
     
     def find_anchor_and_extract_smart(self, audio_path,
                                       search_start_time=1260,
-                                      anchor_phrases=["전체대화 주세요", "전체대화", "전체 대화", "전체되어", "전체 되어"]):
+                                      anchor_phrases=["전체대화 주세요", "전체대화", "전체 대화", "전체되어", "전체 되어",
+                                                       "빈칸 채워진 전체대화", "전체대화 들어볼게요",
+                                                       "전체대화 들어보세요", "전체 대화 들어", "전체대화 드릴게요"]):
         """
         음악 기반 지능형 추출 + Whisper 전사로 영어 구간만 필터링
         
@@ -230,14 +232,14 @@ class SmartConversationExtractor:
             json.dump(result_ko, f, ensure_ascii=False, indent=2)
         print(f"💾 한국어 전사 결과 저장: {transcription_path}\n")
         
-        # 2. 앵커 검색 (한국어 전사 사용) - 22분~26분 사이에서만 검색
-        print(f"🔍 앵커 문구 검색 중 (22분~26분 범위)...")
+        # 2. 앵커 검색 (한국어 전사 사용) - 22분~28분 사이에서 검색 (장면에 따라 다소 늦게 나올 수 있음)
+        print(f"🔍 앵커 문구 검색 중 (22분~28분 범위)...")
         anchor_end_time = None
         segments_ko = result_ko['segments']
         
-        # 시간 범위 제한
+        # 시간 범위 제한 (넓혀서 누락 방지)
         MIN_ANCHOR_TIME = 1320  # 22분
-        MAX_ANCHOR_TIME = 1560  # 26분
+        MAX_ANCHOR_TIME = 1680  # 28분
         
         # 단일 세그먼트 검색
         for segment in segments_ko:
@@ -264,7 +266,7 @@ class SmartConversationExtractor:
         
         # 병합 검색
         if anchor_end_time is None:
-            print(f"🔍 연속 세그먼트 병합 검색 중 (22분~26분 범위)...")
+            print(f"🔍 연속 세그먼트 병합 검색 중 (22분~28분 범위)...")
             for i, segment in enumerate(segments_ko):
                 seg_start = segment['start']
                 

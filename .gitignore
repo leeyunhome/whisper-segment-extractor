@@ -14,6 +14,14 @@ env/
 ENV/
 whisper_env/
 
+# 환경 변수 (비밀번호 보관) - 절대 git 에 올리지 말 것!
+.env
+.env.local
+.env.*.local
+
+# Playwright 자동화 프로필 (쿠키, 캐시 포함)
+.playwright_profile/
+
 # Whisper 모델 캐시
 ~/.cache/whisper/
 
