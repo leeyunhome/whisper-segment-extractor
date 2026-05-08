@@ -1,79 +1,26 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg-info/
-dist/
-build/
-
-# Virtual Environment
-venv/
-env/
-ENV/
-whisper_env/
-
-# 환경 변수 (비밀번호 보관) - 절대 git 에 올리지 말 것!
+# 자격증명
 .env
-.env.local
-.env.*.local
 
-# Playwright 자동화 프로필 (쿠키, 캐시 포함)
+# Playwright 프로필 (브라우저 쿠키/세션)
 .playwright_profile/
 
-# Whisper 모델 캐시
-~/.cache/whisper/
+# 회차 메타데이터 (재생성 가능)
+.episode_info/
 
-# 생성된 파일
-extracted_*.mp3
-*_extracted_*.mp3
-script_*.txt
-transcription_*.json
+# 임시 파일
 temp_*.mp3
-player_*.json
-*.wav
-*.mp3
+_tmp_*.mp3
+__pycache__/
+*.pyc
 
-# 분석 및 디버깅 스크립트
-analyze_*.py
-check_*.py
-debug_*.py
-test_*.py
+# 결과물
+output_mp3/
+source_mp3/
 
-# 분석 결과 파일
-analysis_result.txt
-anchor_check_result.txt
-
-# 원본 MP3 파일 (용량이 클 수 있으므로)
-20*.mp3
-*.mp3
-!smart_extract.py
-!fast_extract.py
-!extract_conversation.py
-!batch_extract_conversation.py
-!analyze_files.py
-!ebs.py
-
-# 백업 및 임시 파일
-*copy.py
-*copy.mp3
-*.bak
-*.backup
-README_extract_conversation.md
+# Archive (옛 디버그)
+archive/
 
 # IDE
 .vscode/
 .idea/
 *.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# 로그 및 임시 파일
-*.log
-*.tmp
