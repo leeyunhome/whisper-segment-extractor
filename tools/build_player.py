@@ -92,7 +92,7 @@ header { padding: 16px; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur
 .player-container { background: var(--panel); padding: 16px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); }
 audio { width: 100%; height: 54px; border-radius: 12px; }
 
-.controls-row { display: flex; align-items: center; justify-content: space-between; margin-top: 15px; gap: 10px; }
+.controls-row { display: flex; align-items: center; flex-wrap: wrap; margin-top: 12px; gap: 8px; }
 .btn-group { display: flex; gap: 6px; background: rgba(0,0,0,0.3); padding: 6px; border-radius: 12px; }
 .ctrl-btn { background: none; border: none; color: var(--muted); padding: 10px 14px; border-radius: 10px; cursor: pointer; font-size: 17px; transition: 0.2s; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
 .ctrl-btn.active { background: var(--accent); color: white; }
@@ -130,7 +130,7 @@ audio { width: 100%; height: 54px; border-radius: 12px; }
           <div class="ctrl-btn speed-val" id="speedDisp">1.0x</div>
           <button class="ctrl-btn" onclick="changeSpeed(0.1)"><i class="bi bi-plus-lg"></i></button>
         </div>
-        <div class="btn-group">
+        <div class="btn-group" style="margin-left:auto;">
           <button id="repeatBtn" class="ctrl-btn" onclick="toggleRepeat()"><i class="bi bi-repeat"></i> 반복</button>
           <button id="autoNextBtn" class="ctrl-btn" onclick="toggleAutoNext()"><i class="bi bi-collection-play"></i> 연속</button>
         </div>
@@ -165,9 +165,12 @@ async function init() {
 
     const data = await res.json();
     SCRIPT = data.script || [];
-    document.getElementById('title').textContent = data.subtitle || id;
-    document.title = data.subtitle || id;
+    const epNum = data.episode_num || id.split('_')[0];
+    const titleText = epNum ? `${epNum}회 ${data.subtitle || id}` : (data.subtitle || id);
+    document.getElementById('title').textContent = titleText;
+    document.title = titleText;
     player.src = data.mp3_url;
+    if(params.get('autoplay') === '1') player.play().catch(() => {});
 
     const key = 'ebs_played_' + id;
     const pdata = JSON.parse(localStorage.getItem(key) || '{}');
@@ -397,6 +400,10 @@ function loadPlayCounts() {{
 }}
 
 loadPlayCounts();
+
+document.querySelectorAll('.card').forEach(function(card) {{
+  card.href = card.href + '&autoplay=1';
+}});
 </script>
 </body>
 </html>
