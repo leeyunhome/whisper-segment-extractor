@@ -132,7 +132,7 @@ audio { width: 100%; height: 54px; border-radius: 12px; }
         </div>
         <div class="btn-group" style="margin-left:auto;">
           <button id="repeatBtn" class="ctrl-btn" onclick="toggleRepeat()"><i class="bi bi-repeat"></i> 반복</button>
-          <button id="autoNextBtn" class="ctrl-btn" onclick="toggleAutoNext()"><i class="bi bi-collection-play"></i> 연속</button>
+          <button id="autoNextBtn" class="ctrl-btn active" onclick="toggleAutoNext()"><i class="bi bi-collection-play"></i> 연속</button>
         </div>
       </div>
     </div>
@@ -144,7 +144,7 @@ const EPISODE_LIST = __EPISODE_LIST__;
 
 let SCRIPT = [];
 let repeatMode = 0; // 0=off, 1=구간반복, 2=전체반복
-let isAutoNext = false;
+let isAutoNext = true;
 let currentIdx = -1;
 const player = document.getElementById('player');
 const scriptList = document.getElementById('scriptList');
@@ -170,7 +170,11 @@ async function init() {
     document.getElementById('title').textContent = titleText;
     document.title = titleText;
     player.src = data.mp3_url;
-    if(params.get('autoplay') === '1') player.play().catch(() => {});
+    const shouldAutoPlay = params.get('autoplay') === '1' || sessionStorage.getItem('ebs_autoplay') === '1';
+    sessionStorage.removeItem('ebs_autoplay');
+    if(shouldAutoPlay) {
+      player.addEventListener('canplay', function ap() { player.play().catch(() => {}); player.removeEventListener('canplay', ap); });
+    }
 
     const key = 'ebs_played_' + id;
     const pdata = JSON.parse(localStorage.getItem(key) || '{}');
@@ -403,6 +407,7 @@ loadPlayCounts();
 
 document.querySelectorAll('.card').forEach(function(card) {{
   card.href = card.href + '&autoplay=1';
+  card.addEventListener('click', function() {{ sessionStorage.setItem('ebs_autoplay', '1'); }});
 }});
 </script>
 </body>
