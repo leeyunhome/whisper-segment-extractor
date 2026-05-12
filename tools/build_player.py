@@ -146,6 +146,8 @@ let SCRIPT = [];
 let repeatMode = 0; // 0=off, 1=구간반복, 2=전체반복
 let isAutoNext = true;
 let currentIdx = -1;
+let currentStem = '';
+let preloadedNext = null;
 const player = document.getElementById('player');
 const scriptList = document.getElementById('scriptList');
 
@@ -155,15 +157,13 @@ if(new URLSearchParams(location.search).get('autoplay') === '1' || sessionStorag
   sessionStorage.removeItem('ebs_autoplay');
 }
 
-async function init() {
-  const params = new URLSearchParams(window.location.search);
-  const rawId = params.get('id');
-  if(!rawId) {
-    document.getElementById('loader').innerHTML = '<div>❌ 회차 ID가 없습니다.</div>';
-    return;
-  }
-
-  const id = decodeURIComponent(rawId);
+async function loadEpisode(id) {
+  if(!id) return;
+  currentStem = id;
+  
+  // Update URL without reload
+  const newUrl = window.location.pathname + '?id=' + encodeURIComponent(id);
+  window.history.replaceState({id}, '', newUrl);
 
   try {
     const res = await fetch(`${id}_player.json?v=${Date.now()}`);
@@ -171,12 +171,20 @@ async function init() {
 
     const data = await res.json();
     SCRIPT = data.script || [];
+    currentIdx = -1;
+    scriptList.innerHTML = '';
+    
     const epNum = data.episode_num || id.split('_')[0];
     const titleText = epNum ? `${epNum}회 ${data.subtitle || id}` : (data.subtitle || id);
     document.getElementById('title').textContent = titleText;
     document.title = titleText;
     player.src = data.mp3_url;
-    if(player.autoplay) player.play().catch(() => {});
+    
+    if(player.autoplay) {
+      player.play().catch(() => {
+        console.log("Autoplay blocked, waiting for interaction");
+      });
+    }
 
     const key = 'ebs_played_' + id;
     const pdata = JSON.parse(localStorage.getItem(key) || '{}');
@@ -201,8 +209,10 @@ async function init() {
     });
 
     document.getElementById('loader').style.display = 'none';
+    preloadNext(id);
   } catch(e) {
     console.error(e);
+    document.getElementById('loader').style.display = 'flex';
     document.getElementById('loader').innerHTML = `
       <div style="padding:20px;text-align:center;">
         <div style="font-size:40px;margin-bottom:10px;">⚠️</div>
@@ -211,6 +221,27 @@ async function init() {
         <button onclick="location.reload()" style="background:var(--accent);color:white;border:none;padding:12px 24px;border-radius:10px;font-weight:bold;cursor:pointer;">페이지 새로고침</button>
       </div>`;
   }
+}
+
+async function init() {
+  const params = new URLSearchParams(window.location.search);
+  const rawId = params.get('id');
+  if(!rawId) {
+    document.getElementById('loader').innerHTML = '<div>❌ 회차 ID가 없습니다.</div>';
+    return;
+  }
+  loadEpisode(decodeURIComponent(rawId));
+}
+
+async function preloadNext(stem) {
+  preloadedNext = null;
+  const idx = EPISODE_LIST.findIndex(e => e.stem === stem);
+  if(idx < 0 || idx >= EPISODE_LIST.length - 1) return;
+  const next = EPISODE_LIST[idx + 1];
+  try {
+    const res = await fetch(`${next.stem}_player.json`);
+    if(res.ok) preloadedNext = { stem: next.stem, ...(await res.json()) };
+  } catch(e) {}
 }
 
 function formatTime(s) {
@@ -259,19 +290,52 @@ player.addEventListener('ended', () => {
     player.play();
     return;
   }
-  if(isAutoNext) goNextEpisode();
+  if(!isAutoNext) return;
+  if(preloadedNext) {
+    const next = preloadedNext;
+    preloadedNext = null;
+    currentStem = next.stem;
+    SCRIPT = next.script || [];
+    currentIdx = -1;
+    window.history.pushState({id: next.stem}, '', 'play.html?id=' + encodeURIComponent(next.stem));
+    const epNum = next.episode_num || next.stem.split('_')[0];
+    const titleText = epNum ? `${epNum}회 ${next.subtitle || next.stem}` : (next.subtitle || next.stem);
+    document.getElementById('title').textContent = titleText;
+    document.title = titleText;
+    player.src = next.mp3_url;
+    player.play().catch(() => {
+      window.location.href = 'play.html?id=' + encodeURIComponent(next.stem) + '&autoplay=1';
+    });
+    const key = 'ebs_played_' + next.stem;
+    const pdata = JSON.parse(localStorage.getItem(key) || '{}');
+    pdata.play_count = (pdata.play_count || 0) + 1;
+    pdata.last_played = new Date().toISOString();
+    localStorage.setItem(key, JSON.stringify(pdata));
+    document.getElementById('playCountBadge').textContent = pdata.play_count + '회 청취';
+    scriptList.innerHTML = '';
+    SCRIPT.forEach((s, i) => {
+      const div = document.createElement('div');
+      div.className = 'line';
+      div.id = `line-${i}`;
+      div.innerHTML = `<div class="time">${formatTime(s.start)}</div><div class="text">${s.text}</div>`;
+      div.onclick = () => seekTo(i);
+      scriptList.appendChild(div);
+    });
+    preloadNext(next.stem);
+  } else {
+    goNextEpisode();
+  }
 });
 
 function goNextEpisode() {
-  const params = new URLSearchParams(window.location.search);
-  const currentStem = decodeURIComponent(params.get('id') || '');
   const idx = EPISODE_LIST.findIndex(e => e.stem === currentStem);
   if(idx >= 0 && idx < EPISODE_LIST.length - 1) {
     const next = EPISODE_LIST[idx + 1];
     const loader = document.getElementById('loader');
     loader.style.display = 'flex';
     loader.innerHTML = '<div class="spinner"></div><div style="font-size:18px;">다음 회차 로딩 중...</div>';
-    window.location.href = 'play.html?id=' + encodeURIComponent(next.stem) + '&autoplay=1';
+    player.autoplay = true;
+    loadEpisode(next.stem);
   }
 }
 
