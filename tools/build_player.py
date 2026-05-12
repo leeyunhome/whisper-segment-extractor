@@ -149,6 +149,12 @@ let currentIdx = -1;
 const player = document.getElementById('player');
 const scriptList = document.getElementById('scriptList');
 
+// Synchronous — must run before any async operation to preserve user activation
+if(new URLSearchParams(location.search).get('autoplay') === '1' || sessionStorage.getItem('ebs_autoplay') === '1') {
+  player.autoplay = true;
+  sessionStorage.removeItem('ebs_autoplay');
+}
+
 async function init() {
   const params = new URLSearchParams(window.location.search);
   const rawId = params.get('id');
@@ -170,11 +176,7 @@ async function init() {
     document.getElementById('title').textContent = titleText;
     document.title = titleText;
     player.src = data.mp3_url;
-    const shouldAutoPlay = params.get('autoplay') === '1' || sessionStorage.getItem('ebs_autoplay') === '1';
-    sessionStorage.removeItem('ebs_autoplay');
-    if(shouldAutoPlay) {
-      player.addEventListener('canplay', function ap() { player.play().catch(() => {}); player.removeEventListener('canplay', ap); });
-    }
+    if(player.autoplay) player.play().catch(() => {});
 
     const key = 'ebs_played_' + id;
     const pdata = JSON.parse(localStorage.getItem(key) || '{}');
@@ -269,7 +271,7 @@ function goNextEpisode() {
     const loader = document.getElementById('loader');
     loader.style.display = 'flex';
     loader.innerHTML = '<div class="spinner"></div><div style="font-size:18px;">다음 회차 로딩 중...</div>';
-    window.location.href = 'play.html?id=' + encodeURIComponent(next.stem);
+    window.location.href = 'play.html?id=' + encodeURIComponent(next.stem) + '&autoplay=1';
   }
 }
 
