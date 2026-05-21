@@ -1,0 +1,20 @@
+# Browser automation
+playwright>=1.40.0
+python-dotenv>=1.0.0
+
+# Desktop GUI automation (Windows)
+pyautogui>=0.9.54
+pygetwindow>=0.0.9
+
+# Speech recognition (faster-whisper = CTranslate2 backend, ~4x faster, lower VRAM)
+faster-whisper>=1.0.0
+
+# Music/speech detection
+inaSpeechSegmenter>=0.7.7
+tensorflow>=2.10.0
+
+# Audio processing
+pydub>=0.25.1
+
+# Cloud storage + DB (Phase 1+)
+supabase>=2.0.0
