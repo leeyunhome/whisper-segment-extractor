@@ -15,7 +15,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.detach(), encoding='utf-8')
 
 sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
-from src.config import OUTPUT_MP3_DIR, SUPABASE_URL, SUPABASE_BUCKET_NAME
+from src.config import OUTPUT_MP3_DIR, SUPABASE_URL, SUPABASE_BUCKET_NAME, R2_PUBLIC_URL
 
 def parse_filename(stem: str) -> dict:
     info = {"episode": None, "category": "", "subtitle": stem, "date": "", "date_compact": ""}
@@ -105,6 +105,7 @@ audio { width: 100%; height: 54px; border-radius: 12px; }
 .line.current { background: rgba(56, 189, 248, 0.2); border-color: var(--accent); box-shadow: 0 0 20px rgba(56, 189, 248, 0.1); }
 .line .time { font-size: 14px; color: var(--accent); font-weight: bold; margin-bottom: 8px; }
 .line .text { font-size: 22px; font-weight: 500; word-break: keep-all; line-height: 1.4; color: #fff; }
+.kor-text { display: block; font-size: 16px; color: var(--muted); margin-top: 6px; border-left: 2px solid var(--accent); padding-left: 10px; }
 
 #loader { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
 .spinner { width: 50px; height: 50px; border: 5px solid var(--panel); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
@@ -191,11 +192,27 @@ async function init() {
       scriptList.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);">스크립트 데이터가 없습니다.</div>';
     }
 
+    function escapeText(s) {
+      if (s == null) return "";
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function formatText(s) {
+      if (!s) return "";
+      let esc = escapeText(s);
+      return esc.replace(/([가-힣ㄱ-ㅎㅏ-ㅣ]+[가-힣ㄱ-ㅎㅏ-ㅣ\s\d.,!?~]*)/g, '<span class="kor-text">$1</span>');
+    }
+
     SCRIPT.forEach((s, i) => {
       const div = document.createElement('div');
       div.className = 'line';
       div.id = `line-${i}`;
-      div.innerHTML = `<div class="time">${formatTime(s.start)}</div><div class="text">${s.text}</div>`;
+      div.innerHTML = `<div class="time">${formatTime(s.start)}</div><div class="text">${formatText(s.text)}</div>`;
       div.onclick = () => seekTo(i);
       scriptList.appendChild(div);
     });
@@ -449,7 +466,9 @@ def build_episode_data_json(stem: str, output_dir: Path):
     with open(json_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
     meta = parse_filename(stem)
-    if SUPABASE_URL:
+    if R2_PUBLIC_URL:
+        mp3_url = f"{R2_PUBLIC_URL}/{stem}.mp3"
+    elif SUPABASE_URL:
         mp3_url = f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/public/{SUPABASE_BUCKET_NAME}/episodes/{meta.get('episode')}_{meta.get('date_compact')}.mp3"
     else:
         mp3_url = f"{stem}.mp3"

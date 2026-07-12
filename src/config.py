@@ -89,6 +89,8 @@ END_PHRASES = [
     # Whisper 오인식 대응 (음운 유사 오기)
     "입으로 하는 영자",   # 영작 → 영자
     "이병작",             # 입영작 → 이병작
+    "이병자",             # 입영작 → 이병자
+    "이병자 타임",
     "입병작",
     "입영자",
     "입 영작",
@@ -155,7 +157,7 @@ MAX_PAGES_FALLBACK = 30
 
 
 # ==============================================================================
-# Supabase
+# Supabase (사용 중단 - 프로젝트 일시 정지)
 # ==============================================================================
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -163,6 +165,17 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 SUPABASE_BUCKET_NAME = "episodes"
+
+
+# ==============================================================================
+# Cloudflare R2
+# ==============================================================================
+
+R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID")
+R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
+R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
+R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME", "ebs-learning")
+R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL", "").rstrip("/")
 MAX_EPISODES_LIMIT = 200
 
 # ==============================================================================

@@ -18,3 +18,9 @@ pydub>=0.25.1
 
 # Cloud storage + DB (Phase 1+)
 supabase>=2.0.0
+
+# Automatic translation
+deep-translator>=1.11.4
+
+# PDF parsing
+pypdf>=5.0.0
