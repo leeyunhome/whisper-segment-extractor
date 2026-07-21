@@ -271,27 +271,23 @@ def process_one_file(mp3_path: Path, extractor: SmartConversationExtractor) -> b
     except Exception as e:
         print(f"   [WARN] 플레이어 생성 실패: {e}")
 
-    # Supabase 자동 업로드 (Phase 2)
+    # R2 업로드 (Phase 2)
     try:
         info = find_episode_info_for_file(mp3_path)
-        if info:
-            upload_ok = process_and_upload(output_basename, OUTPUT_MP3_DIR, info)
-            if upload_ok:
-                print(f"       ☁️  Supabase 업로드 완료")
-                # 업로드 성공 후 대시보드 최종 갱신 및 GitHub 즉시 동기화
-                try:
-                    from tools.build_player import build_dashboard
-                    from src.runner import sync_to_github_pages
-                    build_dashboard(OUTPUT_MP3_DIR)
-                    print(f"       📊 대시보드 최종 갱신 완료")
-                    print(f"       🚀 GitHub Pages 실시간 동기화 중...")
-                    sync_to_github_pages()
-                except Exception as e:
-                    print(f"       ⚠️ 실시간 동기화 실패: {e}")
-            else:
-                print(f"       ⚠️  Supabase 업로드 실패")
+        upload_ok = process_and_upload(output_basename, OUTPUT_MP3_DIR, info)
+        if upload_ok:
+            print(f"       ☁️  R2 업로드 완료")
+            try:
+                from tools.build_player import build_dashboard
+                from src.runner import sync_to_github_pages
+                build_dashboard(OUTPUT_MP3_DIR)
+                print(f"       📊 대시보드 최종 갱신 완료")
+                print(f"       🚀 GitHub Pages 실시간 동기화 중...")
+                sync_to_github_pages()
+            except Exception as e:
+                print(f"       ⚠️ 실시간 동기화 실패: {e}")
         else:
-            print(f"       ⚠️  회차 정보를 찾을 수 없어 업로드 스킵")
+            print(f"       ⚠️  R2 업로드 실패 (runner 종료 시 재시도됨)")
     except Exception as e:
         print(f"   [WARN] 업로드 과정 오류: {e}")
 

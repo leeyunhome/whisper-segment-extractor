@@ -209,6 +209,22 @@ def main():
     print("\n[WAIT] 다운로드 + 추출 처리 대기 중... (Ctrl+C 로 중단)")
     watcher_thread.join()
 
+    # R2 누락 파일 일괄 업로드 (watcher 업로드 실패 대비 안전망)
+    try:
+        import subprocess, sys
+        r2_public_url = os.getenv("R2_PUBLIC_URL", "").rstrip("/")
+        if r2_public_url:
+            print(f"\n[R2] 누락 파일 최종 확인 중...")
+            result = subprocess.run(
+                [sys.executable, "tools/upload_to_r2.py", "--public-url", r2_public_url],
+                cwd=PROJECT_DIR, capture_output=True, text=True, encoding="utf-8", errors="replace"
+            )
+            for line in result.stdout.splitlines():
+                if "[UP]" in line or "완료" in line:
+                    print(f"   {line.strip()}")
+    except Exception as e:
+        print(f"   [WARN] R2 최종 업로드 확인 실패: {e}")
+
     # 동기화 시도
     sync_to_github_pages()
 
