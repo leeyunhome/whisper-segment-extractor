@@ -24,6 +24,10 @@ if errorlevel 1 (
 
 cd /d "%~dp0"
 
+set KMP_DUPLICATE_LIB_OK=TRUE
+set OMP_NUM_THREADS=1
+set MKL_NUM_THREADS=1
+
 python -m src.runner %*
 
 echo.

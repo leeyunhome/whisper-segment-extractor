@@ -27,7 +27,6 @@ from src.config import (
 )
 from src.episode_info import make_safe_filename
 from src.extractor import SmartConversationExtractor, HAS_INA
-from src.uploader import process_and_upload
 
 
 EBS_PATTERN = re.compile(EBS_FILENAME_PATTERN)
@@ -221,6 +220,33 @@ def move_outputs_to_output_dir(source_basename: str, output_basename: str) -> li
     return moved
 
 
+def _upload_via_subprocess(output_basename: str) -> bool:
+    """boto3가 없는 환경(whisper_env)에서도 동작하도록 miniconda base python으로 업로드 실행."""
+    import subprocess
+    # conda base python 경로 추정 (whisper_env -> base)
+    base_python = Path(sys.executable).parent.parent.parent / "python.exe"
+    if not base_python.exists():
+        # fallback: 현재 환경에서 직접 시도
+        from src.uploader import process_and_upload
+        return process_and_upload(output_basename, OUTPUT_MP3_DIR, {})
+
+    script = (
+        f"import sys; sys.path.insert(0, r'{PROJECT_DIR}')\n"
+        f"from src.uploader import process_and_upload\n"
+        f"from pathlib import Path\n"
+        f"ok = process_and_upload(r'{output_basename}', Path(r'{OUTPUT_MP3_DIR}'), {{}})\n"
+        f"sys.exit(0 if ok else 1)\n"
+    )
+    result = subprocess.run(
+        [str(base_python), "-c", script],
+        cwd=str(PROJECT_DIR),
+        capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
+    for line in result.stdout.splitlines():
+        print(f"   {line}")
+    return result.returncode == 0
+
+
 def process_one_file(mp3_path: Path, extractor: SmartConversationExtractor) -> bool:
     print(f"\n{'='*80}")
     print(f"[PROCESS] {mp3_path.name}")
@@ -272,9 +298,9 @@ def process_one_file(mp3_path: Path, extractor: SmartConversationExtractor) -> b
         print(f"   [WARN] 플레이어 생성 실패: {e}")
 
     # R2 업로드 (Phase 2)
+    # boto3가 현재 환경(whisper_env)에 없을 수 있으므로 miniconda base python으로 subprocess 실행
     try:
-        info = find_episode_info_for_file(mp3_path)
-        upload_ok = process_and_upload(output_basename, OUTPUT_MP3_DIR, info)
+        upload_ok = _upload_via_subprocess(output_basename)
         if upload_ok:
             print(f"       ☁️  R2 업로드 완료")
             try:
