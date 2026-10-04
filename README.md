@@ -1,13 +1,69 @@
 # EBS 오디오 학습 플랫폼 (whisper-segment-extractor)
 
-EBS 왕초보 영어 등 교육용 오디오 콘텐츠를 자동으로 다운로드하고, Whisper AI를 통해 영문 스크립트를 추출하여 배포하는 자동화 플랫폼입니다.
+EBS 왕초보 영어 방송을 자동으로 다운로드하고, faster-whisper(large-v3-turbo)로 전사하여 영어 대화 구간만 잘라내 MP3·스크립트로 만들고, 웹 플레이어로 배포하는 자동화 파이프라인입니다.
+
+구조와 데이터 흐름은 [ARCHITECTURE.md](ARCHITECTURE.md)를 참고하세요.
 
 ## 🚀 주요 기능
-- **자동 다운로드**: EBS 다운로더 PC 앱을 제어하여 지정된 회차를 자동으로 다운로드
-- **AI 스크립트 추출**: OpenAI Whisper 모델을 사용하여 영어 대화 내용을 텍스트로 변환
-- **스마트 MP3 분할**: 전체 방송 내용 중 실제 학습에 필요한 영어 대화 세그먼트만 정밀 추출
-- **실시간 웹 배포**: Supabase(DB/Storage)와 GitHub Pages를 결합한 동적 플레이어 배포
-- **시니어 친화적 UI**: 어르신들도 보기 편한 큰 글씨와 간편한 조작 인터페이스 제공
+- **자동 다운로드**: Playwright와 EBS 다운로더 PC 앱 제어로 지정한 회차를 다운로드
+- **AI 전사**: faster-whisper(CTranslate2) `large-v3-turbo`로 한국어/영어 전사
+- **스마트 MP3 분할**: 앵커 문구 + inaSpeechSegmenter(음악/음성 구간)로 영어 대화 구간만 정밀 추출
+- **배포**: MP3는 Cloudflare R2, 플레이어는 GitHub Pages(`temp_repo`)로 배포
+- **시니어 친화적 UI**: 큰 글씨, 배속 제어(0.5x~2.0x), 문장 반복
+
+## ⚙️ 사전 요구사항
+- Windows 10/11, NVIDIA GPU 권장(없으면 CPU로 자동 전환, 느림)
+- Miniconda + conda 환경 `whisper_env`
+- EBS 다운로더 PC 앱 설치, 다운로드 폴더 `C:\EBSe`(변경: `.env`의 `EBS_DOWNLOAD_DIR`)
+- EBS 계정, Cloudflare R2 버킷
+
+## 🛠️ 설치
+```
+conda create -n whisper_env python=3.9
+setup.bat
+```
+`setup.bat`이 패키지 설치(`requirements.txt`), Chromium 설치, `.env` 생성을 수행합니다. 설치 후 `.env`를 편집하세요.
+
+> `requirements.txt`에는 `boto3`가 없습니다. R2 업로드는 `boto3`가 있는 python으로 실행되므로 `pip install boto3`가 필요합니다.
+> Windows에서는 `tensorflow-cpu==2.10.0`, `numpy==1.23.5`, `protobuf==3.19.6` 조합이 안정적입니다(아래 개발 로그 8번).
+
+## 🔑 환경변수 (`.env`)
+| 키 | 설명 |
+|---|---|
+| `EBS_USERNAME`, `EBS_PASSWORD` | EBS 로그인 |
+| `EBS_DOWNLOAD_DIR` | 다운로더 저장 폴더 (기본 `C:\EBSe`) |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | Cloudflare R2 인증 |
+| `R2_BUCKET_NAME` | 버킷 이름 (기본 `ebs-learning`) |
+| `R2_PUBLIC_URL` | R2 공개 URL (설정되면 실행 끝에 누락 파일을 일괄 업로드) |
+
+`SUPABASE_*` 키는 사용 중단되었습니다.
+
+## ▶️ 실행
+```
+run.bat                        # 최신 1개 회차
+run.bat --episode 2707         # 특정 회차
+run.bat --episode 2784-2817    # 범위
+```
+옵션: `--model`(기본 large-v3-turbo), `--device cuda|cpu`, `--process-existing`(이미 있는 파일도 처리), `--watch-first-delay`(다운로드 트리거 전 대기 초).
+
+- 실행 중에는 GUI 자동화가 동작하므로 마우스/키보드를 조작하지 마세요.
+- 회차가 많으면 `2784-2795`처럼 나눠 실행하고, 처음에는 `--episode 2784-2785`로 시험하는 것을 권장합니다.
+- 결과물: `output_mp3/`(추출 MP3, 스크립트, player.json), R2(MP3 업로드), `temp_repo/`가 있으면 GitHub Pages로 push.
+
+## 🧰 도구 (`tools/`)
+| 명령 | 용도 |
+|---|---|
+| `python -m tools.check_gpu` | GPU/CUDA 사용 가능 여부 확인 |
+| `python -m tools.find_anchor <mp3>` | 앵커를 못 찾을 때 전사 결과를 보고 `src/config.py`의 `ANCHOR_PHRASES`에 추가할 문구 확인 |
+| `python tools/retranscribe_episode.py 2754` | 추출된 MP3를 영어로 재전사해 player.json 스크립트 갱신 |
+| `python tools/upload_to_r2.py [--dry-run]` | `output_mp3/`의 MP3를 R2에 업로드하고 player.json URL 교체 |
+
+## 🩺 문제 해결
+- **영어 구간을 못 찾음**: `tools/find_anchor`로 확인 후 `ANCHOR_PHRASES`에 추가
+- **GPU 크래시 / CUDA 충돌**: inaSpeechSegmenter는 서브프로세스(`src/ina_worker.py`)로 분리되어 있음. 개발 로그 8~9번 참고
+- **`mkl_malloc` 메모리 오류**: `run.bat`이 `OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1`을 설정함
+- **콘솔 인코딩 오류**: `PYTHONIOENCODING=utf-8` (개발 로그 10번)
+- **R2 업로드 실패**: `boto3` 설치 및 `.env`의 R2 키 확인
 
 ## 📝 개발 및 시행착오 기록 (Development Log)
 

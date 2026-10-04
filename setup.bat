@@ -13,7 +13,7 @@ echo Installing required packages to whisper_env:
 echo   - playwright (browser automation)
 echo   - python-dotenv (env management)
 echo   - pyautogui + pygetwindow (GUI automation)
-echo   - openai-whisper (speech recognition)
+echo   - faster-whisper (speech recognition)
 echo   - inaSpeechSegmenter + tensorflow (music/speech detection)
 echo   - pydub (audio processing)
 echo.
