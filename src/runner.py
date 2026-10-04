@@ -34,16 +34,28 @@ def run_watcher(model: str, max_files: int, device: Optional[str] = None,
 
     env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     print(f"[RUN] watcher: {' '.join(cmd[2:])}")
-    subprocess.run(cmd, cwd=PROJECT_DIR, env=env)
+    global _watcher_proc
+    _watcher_proc = subprocess.Popen(cmd, cwd=PROJECT_DIR, env=env)
+    _watcher_proc.wait()
 
 
-def run_downloader(episode: str = None):
+_watcher_proc: Optional[subprocess.Popen] = None
+
+
+def stop_watcher():
+    """다운로드 트리거 실패 시 무한 대기 방지를 위해 watcher 종료"""
+    if _watcher_proc and _watcher_proc.poll() is None:
+        print("[STOP] 다운로드 실패로 watcher 종료")
+        _watcher_proc.terminate()
+
+
+def run_downloader(episode: str = None) -> bool:
     cmd = [sys.executable, "-m", "src.auto_download"]
     if episode:
         cmd.extend(["--episode", episode])
 
     print(f"[RUN] auto_download: {' '.join(cmd[2:])}")
-    subprocess.run(cmd, cwd=PROJECT_DIR)
+    return subprocess.run(cmd, cwd=PROJECT_DIR).returncode == 0
 
 
 def count_episodes(episode_arg: str) -> int:
@@ -204,9 +216,11 @@ def main():
     print(f"[WAIT] {args.watch_first_delay}초 후 다운로드 트리거...")
     time.sleep(args.watch_first_delay)
 
-    run_downloader(args.episode)
-
-    print("\n[WAIT] 다운로드 + 추출 처리 대기 중... (Ctrl+C 로 중단)")
+    if not run_downloader(args.episode):
+        print("\n[ERROR] 다운로드 트리거 실패 - watcher를 종료합니다.")
+        stop_watcher()
+    else:
+        print("\n[WAIT] 다운로드 + 추출 처리 대기 중... (Ctrl+C 로 중단)")
     watcher_thread.join()
 
     # R2 누락 파일 일괄 업로드 (watcher 업로드 실패 대비 안전망)

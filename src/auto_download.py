@@ -106,6 +106,9 @@ def parse_episode_arg(arg: str) -> list:
 # 로그인
 # ==============================================================================
 
+LOGIN_MAX_ATTEMPTS = 3
+
+
 def is_logged_in(page: Page) -> bool:
     try:
         content = page.content()
@@ -133,7 +136,8 @@ def perform_ebs_login(page: Page, username: str, password: str) -> bool:
     print("\n[LOGIN] EBS 자동 로그인...")
 
     if "login" not in page.url.lower():
-        click_login_link(page)
+        if not click_login_link(page):
+            print("[WARN] 로그인 링크를 못 눌렀습니다. 현재 페이지에서 입력란 탐색 계속")
         page.wait_for_load_state("domcontentloaded", timeout=DEFAULT_TIMEOUT_MS)
         page.wait_for_timeout(1000)
 
@@ -161,7 +165,7 @@ def perform_ebs_login(page: Page, username: str, password: str) -> bool:
     pw_loc = None
     try:
         loc = page.locator("input[type='password']:visible").first
-        loc.wait_for(state="visible", timeout=3000)
+        loc.wait_for(state="visible", timeout=10000)
         pw_loc = loc
     except Exception:
         print("[ERROR] PW 입력란 못 찾음")
@@ -456,7 +460,16 @@ def run_download_flow(page: Page, username: str, password: str,
     page.wait_for_timeout(1500)
 
     if not is_logged_in(page):
-        if not perform_ebs_login(page, username, password):
+        logged_in = False
+        for attempt in range(1, LOGIN_MAX_ATTEMPTS + 1):
+            if perform_ebs_login(page, username, password):
+                logged_in = True
+                break
+            if attempt < LOGIN_MAX_ATTEMPTS:
+                print(f"[RETRY] 로그인 재시도 ({attempt}/{LOGIN_MAX_ATTEMPTS - 1}) - 메인 페이지 새로고침")
+                page.goto(EBS_MAIN_URL, wait_until="domcontentloaded")
+                page.wait_for_timeout(2000)
+        if not logged_in:
             return False
     else:
         print("[OK] 이미 로그인됨")
