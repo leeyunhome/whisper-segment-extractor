@@ -24,3 +24,15 @@ archive/
 .vscode/
 .idea/
 *.swp
+
+# 결과물/로그 (재생성 가능)
+transcription_*.json
+run_*.log
+
+# 임시 작업 폴더 / 도구 상태
+scratch/
+.claude/
+.lecture_plans/
+
+# 중첩 저장소
+temp_repo/
