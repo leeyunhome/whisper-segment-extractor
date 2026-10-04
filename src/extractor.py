@@ -34,11 +34,11 @@ from src.config import (
     NGRAM_N,
 )
 
-try:
-    from inaSpeechSegmenter import Segmenter
-    HAS_INA = True
-except ImportError:
-    HAS_INA = False
+# inaSpeechSegmenter(TF)를 모듈 레벨에서 import하면 watcher 시작 시점에
+# TF가 CUDA를 선점해 ctranslate2(Whisper GPU)와 충돌→크래시 발생.
+# 패키지 존재 여부만 확인하고, 실제 import는 load_models()에서 지연 실행.
+import importlib.util as _ilu
+HAS_INA = _ilu.find_spec("inaSpeechSegmenter") is not None
 
 
 def detect_device() -> str:
@@ -60,6 +60,33 @@ class FasterWhisperBackend:
     """
 
     def __init__(self, model_size: str, device: str):
+        if device == "cuda":
+            import os, site
+            # ctranslate2는 LoadLibrary(플래그 없음)로 DLL을 로드하므로
+            # os.add_dll_directory()가 아닌 PATH 환경변수에 추가해야 인식됨.
+            _paths_to_add = []
+
+            # 1. nvidia-cudnn-cu12 패키지 (cudnn_ops_infer64_8.dll 등 서브 DLL 포함)
+            try:
+                for sp in site.getsitepackages():
+                    _p = os.path.join(sp, "nvidia", "cudnn", "bin")
+                    if os.path.isdir(_p):
+                        _paths_to_add.append(_p)
+            except Exception:
+                pass
+
+            # 2. PyTorch 번들 CUDA DLL (cublas, cudart 등)
+            try:
+                import torch
+                _p = os.path.join(os.path.dirname(torch.__file__), "lib")
+                if os.path.isdir(_p):
+                    _paths_to_add.append(_p)
+            except ImportError:
+                pass
+
+            if _paths_to_add:
+                os.environ["PATH"] = os.pathsep.join(_paths_to_add) + os.pathsep + os.environ.get("PATH", "")
+
         from faster_whisper import WhisperModel
         # float16: CUDA 권장 (속도/정확도 균형). int8: CPU 또는 VRAM 부족 시.
         compute_type = "float16" if device == "cuda" else "int8"
@@ -100,7 +127,16 @@ class SmartConversationExtractor:
         self.segmenter = None
 
     def load_models(self):
-        """faster-whisper + inaSpeechSegmenter 로딩"""
+        """faster-whisper + inaSpeechSegmenter 로딩.
+
+        순서: INA(TF/CPU) 먼저 → Whisper(ctranslate2/GPU) 나중.
+        TF가 CUDA를 건드리기 전에 ctranslate2가 GPU 컨텍스트를 선점하면
+        두 라이브러리의 CUDA 컨텍스트가 충돌해 inference 중 crash 발생.
+        INA를 먼저 CPU로 초기화한 뒤 Whisper가 GPU를 독점 사용하면 안전.
+        """
+        # INA는 서브프로세스로 실행 (src/ina_worker.py) → 직접 로드 불필요
+        # self.segmenter는 더 이상 사용하지 않음
+
         if self.model is None:
             print(f"🔄 Whisper 모델 로딩 중... (모델: {self.model_size}, 디바이스: {self.device}, 백엔드: faster-whisper)")
             if self.device == "cuda":
@@ -113,11 +149,6 @@ class SmartConversationExtractor:
                     pass
             self.model = load_whisper_model(self.model_size, self.device)
             print("✅ Whisper 모델 로딩 완료\n")
-
-        if HAS_INA and self.segmenter is None:
-            print("🔄 inaSpeechSegmenter 모델 로딩 중...")
-            self.segmenter = Segmenter()
-            print("✅ inaSpeechSegmenter 모델 로딩 완료\n")
 
     # ==========================================================================
     # 메인 진입점
@@ -145,8 +176,8 @@ class SmartConversationExtractor:
             self._print_anchor_diagnosis(result_ko['segments'], audio_path)
             return False, None, None
 
-        # 3단계: 음악 세그먼트 분석
-        if not HAS_INA or self.segmenter is None:
+        # 3단계: 음악 세그먼트 분석 (INA는 서브프로세스로 실행)
+        if not HAS_INA:
             print("❌ inaSpeechSegmenter 가 필요합니다.")
             print("   pip install inaSpeechSegmenter tensorflow")
             return False, None, None
@@ -336,10 +367,56 @@ class SmartConversationExtractor:
     # ==========================================================================
 
     def _analyze_audio_segments(self, audio_path: str, anchor_end_time: float) -> list:
-        """inaSpeechSegmenter 로 분석 후 앵커 이후 세그먼트만 반환"""
+        """inaSpeechSegmenter 로 분석 후 앵커 이후 세그먼트만 반환.
+
+        TF(INA)와 ctranslate2(Whisper) CUDA 충돌 방지를 위해
+        INA를 별도 서브프로세스(src/ina_worker.py)로 실행해 완전 격리.
+        """
+        import sys
+        import subprocess
+        import json
+
         print("🔄 2단계: 음악/음성 세그먼트 분석...")
         print("🎼 분석 중 (시간 걸림)...")
-        ina_segments = self.segmenter(audio_path)
+
+        import os
+        sub_env = {**os.environ, "CUDA_VISIBLE_DEVICES": "-1"}
+
+        result = subprocess.run(
+            [sys.executable, "-m", "src.ina_worker", audio_path],
+            capture_output=True, text=True, encoding="utf-8",
+            env=sub_env
+        )
+        if result.returncode != 0:
+            print(f"⚠️  INA 서브프로세스 오류 (exitcode {result.returncode}): {result.stderr[:200]}")
+            return []
+
+        stdout_clean = result.stdout.strip()
+        first_idx = -1
+        for i, c in enumerate(stdout_clean):
+            if c in ['[', '{']:
+                first_idx = i
+                break
+        last_idx = -1
+        for i in range(len(stdout_clean) - 1, -1, -1):
+            if stdout_clean[i] in [']', '}']:
+                last_idx = i
+                break
+
+        if first_idx != -1 and last_idx != -1:
+            stdout_clean = stdout_clean[first_idx:last_idx+1]
+
+        try:
+            raw = json.loads(stdout_clean)
+        except json.JSONDecodeError:
+            print(f"⚠️  INA 출력 파싱 실패: {result.stdout[:200]}")
+            return []
+
+        if isinstance(raw, dict) and "error" in raw:
+            print(f"⚠️  INA 오류: {raw['error']}")
+            return []
+
+        ina_segments = [(seg["label"], seg["start"], seg["end"]) for seg in raw]
 
         target = [
             (label, start, end)
@@ -459,7 +536,7 @@ class SmartConversationExtractor:
         extract_start 기준으로 최소 대기 시간 적용.
         Whisper 음악 구간 환각(짧은 노이즈 세그먼트)을 최소 발화 시간으로 필터링.
         """
-        MIN_SEG_DURATION = 1.0  # 이보다 짧은 세그먼트는 Whisper 환각으로 간주
+        MIN_SEG_DURATION = 0.5  # 이보다 짧은 세그먼트는 Whisper 환각으로 간주 (네, 오케이 등 짦은 발화 정상 수용)
 
         for i in range(len(ko_segments) - 2):
             s1, e1, t1 = ko_segments[i]
@@ -469,7 +546,7 @@ class SmartConversationExtractor:
             if s1 < extract_start + MIN_ENGLISH_DURATION_AFTER_ANCHOR:
                 continue
 
-            # 너무 짧은 세그먼트는 음악 구간에서 나온 환각 (ex: "네.", "한 잔 у")
+            # 너무 짧은 세그먼트는 음악 구간에서 나온 환각 (ex: "한 잔 у")
             if (e1 - s1) < MIN_SEG_DURATION or (e2 - s2) < MIN_SEG_DURATION or (e3 - s3) < MIN_SEG_DURATION:
                 continue
 
@@ -481,7 +558,7 @@ class SmartConversationExtractor:
                 return SequenceMatcher(None, a, b).ratio()
             is_repetitive = sim(t1, t2) > 0.8 or sim(t2, t3) > 0.8
 
-            if gap1 <= 5.0 and gap2 <= 5.0 and not is_repetitive:
+            if gap1 <= 6.0 and gap2 <= 6.0 and not is_repetitive:
                 print(f"\n  📍 진짜 한국어 설명 감지:")
                 print(f"    [{s1:.1f}s] {t1[:30]}")
                 print(f"    [{s2:.1f}s] {t2[:30]} (gap: {gap1:.1f}s)")
@@ -561,6 +638,9 @@ class SmartConversationExtractor:
 
         # 3. 영어 전사 결과를 정제 (한국어/종결문구 필터 + 중복 제거)
         clean_segments = self._clean_english_segments(result_en, actual_duration)
+
+        # 3.5. 한국어 해석 추가 (공식 강의안 PDF 매칭 우선, 없을 시 자동 번역 Fallback)
+        self._add_korean_translations(clean_segments, base_name)
 
         # 4. 선생님 영어 메타 문구 감지 → 오디오 + 스크립트 재트리밍
         trim_time = self._apply_teacher_phrase_trim(clean_segments, extracted_mono, output_path)
@@ -715,6 +795,113 @@ class SmartConversationExtractor:
         }
 
         return {"segments": clean, "meta": clean_meta}
+
+    def _add_korean_translations(self, clean_data: dict, base_name: str):
+        """영어 세그먼트에 한국어 번역 추가 (공식 PDF 강의안 매칭 우선, 없을 시 deep-translator 사용)"""
+        import re
+        from difflib import SequenceMatcher
+        from src.pdf_parser import get_parsed_lecture
+
+        # 1. base_name에서 에피소드 회차 번호 정교한 추출
+        ep_num = None
+        
+        # 1-1. 날짜 기반 매칭 (예: 20260526) -> .episode_info 참고
+        date_match = re.search(r'(\d{8})', base_name)
+        if date_match:
+            file_date = date_match.group(1)
+            info_dir = Path(__file__).parent.parent.resolve() / ".episode_info"
+            if info_dir.exists():
+                for info_file in info_dir.glob("*.json"):
+                    try:
+                        with open(info_file, 'r', encoding='utf-8') as f:
+                            info = json.load(f)
+                        if info.get('air_date_compact') == file_date:
+                            ep_num = str(info.get('episode'))
+                            print(f"   [TRANS] 파일 날짜 {file_date} 기반 회차 정보 매핑 성공: {ep_num}회")
+                            break
+                    except Exception:
+                        continue
+
+        # 1-2. 날짜 매칭 실패 시, 4자리 회차 번호 직접 추출 (연도 2026 제외 및 2600~2800 범위 제한)
+        if not ep_num:
+            all_nums = re.findall(r'\d{4}', base_name)
+            for num in all_nums:
+                if 2600 <= int(num) <= 2800:
+                    ep_num = num
+                    print(f"   [TRANS] 파일명 4자리 숫자 기반 회차 정보 매핑 성공: {ep_num}회")
+                    break
+
+        parsed_lecture = None
+        if ep_num:
+            print(f"   [TRANS] {ep_num}회 공식 강의안 번역 매핑 매칭 시도...")
+            parsed_lecture = get_parsed_lecture(ep_num)
+
+        # 2. 공식 교안이 존재할 경우 Fuzzy Match 진행
+        if parsed_lecture:
+            matched_count = 0
+            for p_seg in clean_data["segments"]:
+                eng_text = p_seg["text"].strip()
+                if not eng_text:
+                    continue
+
+                best_match = None
+                best_ratio = 0.0
+
+                # PDF의 공식 문장과 전사 문장 유사도 비교
+                for pdf_item in parsed_lecture:
+                    # 빈칸 '____' 문구는 유사도 계산 시 노이즈이므로 제거하고 매칭력 극대화
+                    pdf_eng_clean = re.sub(r'_{2,}', '', pdf_item["english_raw"].lower())
+                    pdf_eng_clean = re.sub(r'[^a-zA-Z0-9\s]', '', pdf_eng_clean)
+                    
+                    eng_clean = re.sub(r'[^a-zA-Z0-9\s]', '', eng_text.lower())
+
+                    ratio = SequenceMatcher(None, eng_clean, pdf_eng_clean).ratio()
+                    if ratio > best_ratio:
+                        best_ratio = ratio
+                        best_match = pdf_item
+
+                # 유사도 임계치 0.65 이상일 경우 매칭 확정
+                if best_ratio >= 0.65 and best_match:
+                    ko_official = best_match["korean_official"]
+                    p_seg["text"] = f"{eng_text} {ko_official}"
+                    matched_count += 1
+                    print(f"      [MATCH] '{eng_text[:30]}...' ↔ 공식 번역: '{ko_official}' (유사도: {best_ratio:.2f})")
+                else:
+                    # 매칭 실패 시 기계 번역 Fallback
+                    try:
+                        from deep_translator import GoogleTranslator
+                        translator = GoogleTranslator(source='en', target='ko')
+                        ko_text = translator.translate(eng_text)
+                        p_seg["text"] = f"{eng_text} {ko_text}"
+                    except Exception as e:
+                        print(f"      [Fallback 번역 오류] {eng_text} - {e}")
+
+            print(f"   [TRANS] 공식 번역 매핑 성공: {matched_count}/{len(clean_data['segments'])}개 세그먼트")
+            return
+
+        # 3. 공식 교안이 없는 경우 기존 기계 번역 실행 (Fallback)
+        print("   [TRANS] 공식 강의안이 없어 기계 번역(GoogleTranslator)을 적용합니다.")
+        try:
+            from deep_translator import GoogleTranslator
+            translator = GoogleTranslator(source='en', target='ko')
+            
+            for p_seg in clean_data["segments"]:
+                eng_text = p_seg["text"].strip()
+                if not eng_text:
+                    continue
+                
+                # 이미 한국어가 섞여있는지 확인
+                if sum(1 for c in eng_text if '가' <= c <= '힣') > 0:
+                    continue
+                    
+                try:
+                    ko_text = translator.translate(eng_text)
+                    p_seg["text"] = f"{eng_text} {ko_text}"
+                except Exception as e:
+                    print(f"  [번역 오류] {eng_text} - {e}")
+        except ImportError:
+            print("  [경고] deep_translator 패키지가 설치되지 않아 번역을 추가할 수 없습니다.")
+            print("  설치: pip install deep-translator")
 
     def _save_script_from_segments(self, clean_data, base_name, audio_path,
                                    extract_start, extract_end, actual_duration):

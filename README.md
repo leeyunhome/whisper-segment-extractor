@@ -1,112 +1,67 @@
-# Whisper Segment Extractor
+# EBS 오디오 학습 플랫폼 (whisper-segment-extractor)
 
-Whisper AI를 활용하여 오디오 파일에서 특정 대화 구간을 자동으로 감지하고 추출하는 도구입니다.
+EBS 왕초보 영어 등 교육용 오디오 콘텐츠를 자동으로 다운로드하고, Whisper AI를 통해 영문 스크립트를 추출하여 배포하는 자동화 플랫폼입니다.
 
-강의, 팟캐스트, 인터뷰 등 다양한 오디오 콘텐츠에서 원하는 세그먼트를 정확하게 추출할 수 있습니다.
+## 🚀 주요 기능
+- **자동 다운로드**: EBS 다운로더 PC 앱을 제어하여 지정된 회차를 자동으로 다운로드
+- **AI 스크립트 추출**: OpenAI Whisper 모델을 사용하여 영어 대화 내용을 텍스트로 변환
+- **스마트 MP3 분할**: 전체 방송 내용 중 실제 학습에 필요한 영어 대화 세그먼트만 정밀 추출
+- **실시간 웹 배포**: Supabase(DB/Storage)와 GitHub Pages를 결합한 동적 플레이어 배포
+- **시니어 친화적 UI**: 어르신들도 보기 편한 큰 글씨와 간편한 조작 인터페이스 제공
 
-## 주요 기능
+## 📝 개발 및 시행착오 기록 (Development Log)
 
-- 🎤 **Whisper STT**: OpenAI Whisper로 "전체대화" 앵커 자동 감지
-- 🎼 **음악 인식**: inaSpeechSegmenter로 음악/음성 구간 자동 분석
-- 🇬🇧 **영어 구간 추출**: 전사 분석으로 영어 대화만 정확하게 추출
-- 📝 **스크립트 생성**: 대화 내용을 텍스트로 자동 변환
-- ⚡ **고속 처리**: 23분부터 전사하여 처리 속도 2-3배 향상
-- 🎯 **고음질**: 320kbps MP3로 무손실 수준 품질
+본 프로젝트는 완성도 높은 사용자 경험을 위해 다음과 같은 기술적 도전과 해결 과정을 거쳤습니다.
 
-## 설치
+### 1. 아키텍처 현대화 (Single Page Architecture)
+- **문제**: 초기 시스템은 회차별로 정적 HTML을 생성하여 유지보수가 어렵고 저장 효율이 낮았음.
+- **해결**: 단일 플레이어(`play.html`)와 JSON 데이터 기반의 동적 렌더링 방식으로 전환. UI 수정 시 한 번의 변경으로 모든 회차에 적용 가능해짐.
 
-```bash
-# 1. 필수 라이브러리
-pip install openai-whisper pydub inaSpeechSegmenter tensorflow
+### 2. 파이프라인 정합성 확보
+- **문제**: 배포 과정에서 신규 회차가 대시보드 리스트에서 누락되는 현상 발생.
+- **원인**: 데이터가 DB에 완전히 저장되기 전에 대시보드가 생성되었기 때문임.
+- **해결**: `[Supabase Upload] -> [Refresh Dashboard] -> [GitHub Push]` 순서로 파이프라인을 재설계하여 실시간 데이터 반영 보장.
 
-# 2. FFmpeg 설치 (Windows)
-choco install ffmpeg
-```
+### 3. 시니어 맞춤형 UX 개선
+- **문제**: 모바일 환경에서 폰트가 작고 버튼 조작이 어려워 실제 사용자(어르신)의 가독성이 떨어짐.
+- **해결**: 
+  - 제목 폰트 28px, 본문 22px로 확대 적용.
+  - 고대비(Dark Mode) 테마 적용으로 눈의 피로도 감소.
+  - 배속 제어(0.5x~2.0x) 및 문장 반복(Repeat) 기능 추가.
 
-## 사용 방법
+### 4. 브라우저 캐시 무력화 (Cache Busting)
+- **문제**: 코드 업데이트 후에도 사용자의 브라우저가 예전 파일을 계속 보여주는 현상 발생.
+- **해결**: 
+  - 플레이어 파일명을 `player.html`에서 `play.html`로 변경하여 강제 갱신 유도.
+  - 데이터 호출 시 타임스탬프 파라미터(`?v=Date.now()`)를 추가하여 브라우저 캐시를 원천 차단.
 
-## 사용 예시
+### 5. 특수문자 및 인코딩 대응
+- **문제**: 회차 제목에 로마자(`Ⅱ`), 한글 복합자 등이 포함될 경우 파일 경로를 찾지 못하는 문제 발생.
+- **해결**: `decodeURIComponent` 기반의 견고한 URL 처리 로직을 플레이어에 이식하여 다양한 제목 형식에 완벽 대응.
 
-### EBS 영어 강의
-```bash
-# "전체대화" 앵커로 대화 구간 추출
-python smart_extract.py -f ebs_lecture.mp3 --model small
-```
+### 6. 실시간 업데이트 시스템
+- **문제**: 대량의 회차(예: 50개 이상)를 처리할 때 전체 종료 전까지 웹사이트가 업데이트되지 않음.
+- **해결**: 매 회차 처리 완료 시마다 즉시 GitHub Push를 수행하는 **실시간 업데이트 모드** 도입.
 
-### 팟캐스트
-```bash
-# 특정 문구 이후 대화 추출 (코드 수정 필요)
-python smart_extract.py -f podcast.mp3
-```
+### 7. AI 전사 품질 고도화 (Transcription Quality)
+- **문제**: 세그먼트 간 중복 제거 과정에서 단어가 잘리거나(예: 'th' + 'e table'), 반복되는 대화 블록이 제대로 걸러지지 않는 현상 발생.
+- **해결**:
+  - **단어 경계 인식 중복 제거**: 단어 중간에서 텍스트가 잘리지 않도록 경계 검사 로직 추가.
+  - **N-gram 고도화**: 기존 Bigram(n=2)에서 **Trigram(n=3)**으로 유사도 측정 방식을 업그레이드하여 정밀도 향상.
+  - **모델 업그레이드**: Whisper `small`에서 **`medium`** 모델로 기본 설정을 변경하여 전사 정확도 및 환각 현상 대폭 개선.
+  - **중복 검사 범위 확대**: 이전 3개에서 **10개 세그먼트**까지 검사 범위를 넓혀 반복되는 대화 블록을 완벽하게 처리.
 
-### 인터뷰/회의록
-```bash
-# 폴더의 모든 오디오 파일 처리
-python smart_extract.py --folder "C:\Recordings"
-```
+### 8. Windows 환경에서의 TensorFlow 의존성 및 DLL 크래시 해결
+- **문제**: Windows 가상 환경(`whisper_env`)에서 최신 TensorFlow 버전(2.12.0/2.20.0)이 C++ 네이티브 확장 모듈(`_pywrap_tensorflow_internal`) 로딩 실패(`DLL 초기화 루틴을 실행할 수 없습니다` 또는 `지정된 모듈을 찾을 수 없습니다`)를 유발하고 `numba` 라이브러리와 `numpy 2.x`가 호환되지 않는 심각한 패키지 꼬임 문제 발생. 이로 인해 음악/음성 분석용 `inaSpeechSegmenter` 임포트가 실패함.
+- **해결**: 최신 TensorFlow 및 충돌하는 Numpy 2.x 패키지를 완전 제거하고, Windows에서 가장 완벽하게 동작하는 안정된 빌드인 **`tensorflow-cpu==2.10.0`**, **`numpy==1.23.5`**, **`protobuf==3.19.6`** 조합으로 전면 재설치하여 CPU 세그멘테이션 안정성을 완벽히 확보함.
 
-## 출력 파일
+### 9. TensorFlow/Keras 진행률 텍스트로 인한 서브프로세스 JSON 파싱 우회
+- **문제**: ctranslate2(Whisper GPU)와의 CUDA 컨텍스트 경합 및 크래시를 회피하기 위해 `inaSpeechSegmenter`를 외부 서브프로세스(`src/ina_worker.py`)로 분리함. 그러나 TensorFlow C++ 코드가 native stdout으로 직접 출력하는 Keras 진행률 바(`2398/2398 - 23s...`)가 파이프라인의 결과 표준 출력을 오염시켜 `json.JSONDecodeError`를 야기하고 전체 추출 단계가 실패함.
+- **해결**: [src/extractor.py](file:///c:/coding/github-repository/whisper-segment-extractor/src/extractor.py)의 결과 처리부에 **Robust JSON Parser** 로직을 이식. 표준 출력에서 첫 번째 괄호(`[`, `{`)와 마지막 괄호(`]`, `}`) 영역만을 동적으로 잘라내어 로드함으로써, 어떠한 경고 메시지나 TensorFlow native stdout 노이즈에도 강인하게 데이터 파싱을 완수하도록 강화함.
 
-각 파일 처리 시 3개의 파일이 생성됩니다:
+### 10. Windows 콘솔 이모지 유니코드 인코딩 크래시 방지
+- **문제**: 파이프라인 진행 상태를 알리기 위해 출력하던 유니코드 이모지(예: `🔄`, `✅` 등)가 Windows 한글 인코딩 페이지(`CP949`) 환경의 스트림으로 캡처 및 리다이렉션될 때 `UnicodeEncodeError`를 일으키며 전체 가동 프로세스가 강제 중단됨.
+- **해결**: 파이프라인 프로세스 기동 시 환경 변수에 **`PYTHONIOENCODING=utf-8`**을 강제로 주입하여 모든 콘솔 및 파일 캡처 스트림 인코딩을 UTF-8로 고정함으로써 문자 인코딩 관련 조기 크래시 리스크를 원천적으로 배제함.
 
-- `extracted_[파일명].mp3` - 추출된 영어 대화 오디오
-- `script_[파일명].txt` - 대화 스크립트 (타임스탬프 포함)
-- `transcription_[파일명].json` - 전체 전사 결과
-
-## 동작 원리
-
-1. **23분부터 전사**: 불필요한 앞부분 건너뛰기 (2-3배 빠름)
-2. **앵커 감지**: "전체대화", "전체되어" 등 다양한 패턴 검색
-3. **영어 구간 분석**: 각 세그먼트의 한글 비율로 영어/한국어 구분
-4. **자동 종료**: 연속 2개 이상 한국어 세그먼트에서 추출 종료
-5. **음악 시작점 조정**: inaSpeechSegmenter로 정확한 시작점 찾기
-
-## 주요 스크립트
-
-- `smart_extract.py` - **[권장]** Whisper 전사 기반 지능형 추출
-- `fast_extract.py` - 고정 시간 기반 빠른 추출 (46초 offset + 50초)
-- `batch_extract_conversation.py` - inaSpeechSegmenter만 사용 (느림)
-- `extract_conversation.py` - 기본 추출 도구
-
-## 옵션
-
-```bash
-python smart_extract.py --help
-
-옵션:
-  -f, --file FILE      처리할 특정 MP3 파일 경로
-  --folder FOLDER      처리할 폴더 (기본: 현재 폴더)
-  --model {tiny,base,small,medium,large}
-                       Whisper 모델 크기 (기본: tiny)
-```
-
-## 모델 크기별 성능
-
-| 모델 | 속도 | 정확도 | 권장 용도 |
-|------|------|--------|-----------|
-| tiny | ⚡⚡⚡ | ⭐⭐⭐ | 빠른 배치 처리 |
-| base | ⚡⚡ | ⭐⭐⭐⭐ | 일반적 사용 |
-| small | ⚡ | ⭐⭐⭐⭐⭐ | **권장** |
-| medium | 🐌 | ⭐⭐⭐⭐⭐ | 최고 품질 |
-
-## 트러블슈팅
-
-### FFmpeg 오류
-```
-pip install pydub
-choco install ffmpeg
-```
-
-### GPU 가속 (선택사항)
-CUDA 설치 시 자동으로 GPU 사용 → 10배 빠름
-
-### 앵커를 찾지 못하는 경우
-`transcription_*.json` 파일을 열어 실제 앵커 문구 확인
-
-## 라이선스
-
-MIT License
-
-## 기여
-
-이슈나 PR은 언제든 환영합니다!
+---
+*Last Updated: 2026-05-31*
