@@ -16,7 +16,10 @@ tensorflow>=2.10.0
 # Audio processing
 pydub>=0.25.1
 
-# Cloud storage + DB (Phase 1+)
+# Cloud storage (Cloudflare R2, S3 compatible)
+boto3>=1.28.0
+
+# Supabase (deprecated, kept for legacy tools)
 supabase>=2.0.0
 
 # Automatic translation

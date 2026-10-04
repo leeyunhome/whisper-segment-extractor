@@ -24,7 +24,6 @@ setup.bat
 ```
 `setup.bat`이 패키지 설치(`requirements.txt`), Chromium 설치, `.env` 생성을 수행합니다. 설치 후 `.env`를 편집하세요.
 
-> `requirements.txt`에는 `boto3`가 없습니다. R2 업로드는 `boto3`가 있는 python으로 실행되므로 `pip install boto3`가 필요합니다.
 > Windows에서는 `tensorflow-cpu==2.10.0`, `numpy==1.23.5`, `protobuf==3.19.6` 조합이 안정적입니다(아래 개발 로그 8번).
 
 ## 🔑 환경변수 (`.env`)
