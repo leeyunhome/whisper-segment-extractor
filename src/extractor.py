@@ -388,7 +388,9 @@ class SmartConversationExtractor:
             env=sub_env
         )
         if result.returncode != 0:
-            print(f"⚠️  INA 서브프로세스 오류 (exitcode {result.returncode}): {result.stderr[:200]}")
+            # ina_worker 는 예외를 stdout JSON({"error": ...})으로 내보내므로 stdout 도 함께 출력
+            print(f"⚠️  INA 서브프로세스 오류 (exitcode {result.returncode}): "
+                  f"stdout={result.stdout.strip()[-300:]!r} stderr={result.stderr.strip()[-300:]!r}")
             return []
 
         stdout_clean = result.stdout.strip()

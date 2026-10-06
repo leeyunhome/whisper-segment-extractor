@@ -172,9 +172,16 @@ def run_pipeline(episode_arg: str, model: str, device: Optional[str], logger: lo
         cmd.extend(["--device", device])
 
     logger.info(f"[EXEC] 파이프라인 실행: {' '.join(cmd[1:])}")
-    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
 
-    res = subprocess.run(cmd, cwd=PROJECT_DIR, env=env)
+    # 숨김 창으로 실행되는 스케줄러에서는 콘솔 출력이 사라지므로 파일에 남긴다
+    log_dir = PROJECT_DIR / "logs"
+    log_dir.mkdir(exist_ok=True)
+    pipeline_log = log_dir / f"pipeline_{time.strftime('%Y-%m-%d')}.log"
+    logger.info(f"[LOG] 파이프라인 출력: {pipeline_log}")
+
+    with open(pipeline_log, "a", encoding="utf-8", errors="replace") as fh:
+        res = subprocess.run(cmd, cwd=PROJECT_DIR, env=env, stdout=fh, stderr=subprocess.STDOUT)
     return res.returncode == 0
 
 
@@ -263,13 +270,20 @@ def main():
     elapsed = int(time.time() - start_time)
     minutes, seconds = divmod(elapsed, 60)
 
+    # 종료 코드가 0이어도 중간 단계(예: INA 분석) 실패 시 결과물이 없을 수 있어 실제 산출물로 검증
+    missing = [ep for ep in targets if ep not in get_local_episodes()]
+    if missing:
+        logger.error(f"[MISSING] 결과물이 생성되지 않은 회차: {missing} (다음 실행 때 다시 시도됩니다)")
+        success = False
+
     if success:
         msg = f"새 회차({ep_arg}) 전사 및 배포가 완료되었습니다. (소요: {minutes}분 {seconds}초)"
         logger.info(f"✅ {msg}")
         if not args.no_notify:
             send_windows_toast("EBS 자동 전사 완료", msg)
     else:
-        msg = f"회차({ep_arg}) 처리 중 오류가 발생했습니다. 로그를 확인하세요."
+        msg = (f"회차({ep_arg}) 처리 중 오류가 발생했습니다. 결과물 없음: {missing}. 로그를 확인하세요."
+               if missing else f"회차({ep_arg}) 처리 중 오류가 발생했습니다. 로그를 확인하세요.")
         logger.error(f"❌ {msg}")
         if not args.no_notify:
             send_windows_toast("EBS 자동 전사 실패", msg)
