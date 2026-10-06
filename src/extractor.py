@@ -14,6 +14,7 @@
 
 import json
 import os
+import time
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional, Tuple
@@ -39,6 +40,25 @@ from src.config import (
 # 패키지 존재 여부만 확인하고, 실제 import는 load_models()에서 지연 실행.
 import importlib.util as _ilu
 HAS_INA = _ilu.find_spec("inaSpeechSegmenter") is not None
+
+
+def translate_with_retry(translator, text: str, retries: int = 3,
+                         delay: float = 0.35) -> Optional[str]:
+    """Google 번역 호출 (요청 간 지연 + 지수 백오프 재시도).
+
+    무료 엔드포인트는 초당 5회 한도라 429 가 나므로, 호출 전 delay 초 대기하고
+    실패 시 1s, 2s, 4s 간격으로 재시도한다. 끝내 실패하면 None.
+    """
+    for attempt in range(retries + 1):
+        time.sleep(delay)
+        try:
+            return translator.translate(text)
+        except Exception as e:
+            if attempt >= retries:
+                print(f"  [번역 오류] {text} - {e}")
+                return None
+            time.sleep(2 ** attempt)
+    return None
 
 
 def detect_device() -> str:
@@ -824,11 +844,11 @@ class SmartConversationExtractor:
                     except Exception:
                         continue
 
-        # 1-2. 날짜 매칭 실패 시, 4자리 회차 번호 직접 추출 (연도 2026 제외 및 2600~2800 범위 제한)
+        # 1-2. 날짜 매칭 실패 시, 4자리 회차 번호 직접 추출 (연도 2026 제외 및 2600~4000 범위 제한)
         if not ep_num:
             all_nums = re.findall(r'\d{4}', base_name)
             for num in all_nums:
-                if 2600 <= int(num) <= 2800:
+                if 2600 <= int(num) <= 4000:
                     ep_num = num
                     print(f"   [TRANS] 파일명 4자리 숫자 기반 회차 정보 매핑 성공: {ep_num}회")
                     break
@@ -896,11 +916,9 @@ class SmartConversationExtractor:
                 if sum(1 for c in eng_text if '가' <= c <= '힣') > 0:
                     continue
                     
-                try:
-                    ko_text = translator.translate(eng_text)
+                ko_text = translate_with_retry(translator, eng_text)
+                if ko_text:
                     p_seg["text"] = f"{eng_text} {ko_text}"
-                except Exception as e:
-                    print(f"  [번역 오류] {eng_text} - {e}")
         except ImportError:
             print("  [경고] deep_translator 패키지가 설치되지 않아 번역을 추가할 수 없습니다.")
             print("  설치: pip install deep-translator")
