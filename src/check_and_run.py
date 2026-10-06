@@ -147,6 +147,23 @@ def get_web_episodes(max_pages: int = 2, logger: Optional[logging.Logger] = None
     return all_episodes
 
 
+def get_untranslated_episodes(episodes: List[int]) -> List[int]:
+    """player.json 스크립트에 한글(해석)이 하나도 없는 회차 목록"""
+    import json
+    untranslated = []
+    for ep in episodes:
+        files = sorted(OUTPUT_MP3_DIR.glob(f"{ep}_*_player.json"))
+        if not files:
+            continue
+        try:
+            script = json.loads(files[0].read_text(encoding="utf-8")).get("script", [])
+        except Exception:
+            continue
+        if script and not any(re.search("[가-힣]", s.get("text", "")) for s in script):
+            untranslated.append(ep)
+    return untranslated
+
+
 def format_episodes_arg(episodes: List[int]) -> str:
     """[2784, 2785, 2786] -> '2784-2786' 또는 [2784, 2787] -> '2784,2787'"""
     if not episodes:
@@ -278,6 +295,12 @@ def main():
 
     if success:
         msg = f"새 회차({ep_arg}) 전사 및 배포가 완료되었습니다. (소요: {minutes}분 {seconds}초)"
+        untranslated = get_untranslated_episodes(targets)
+        if untranslated:
+            note = (f"한국어 해석이 비어 있는 회차: {untranslated} "
+                    f"(복구: python -m tools.backfill_translations {format_episodes_arg(untranslated)})")
+            logger.warning(f"[NO-TRANSLATION] {note}")
+            msg += f" ※ {note}"
         logger.info(f"✅ {msg}")
         if not args.no_notify:
             send_windows_toast("EBS 자동 전사 완료", msg)

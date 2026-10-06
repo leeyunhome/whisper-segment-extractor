@@ -165,7 +165,14 @@ def click_download_button_in_window(win, dry_run: bool = False, debug: bool = Fa
         hwnd = win._hWnd
         win_set_foreground_window(hwnd)
         time.sleep(0.5)
-        return win_move_and_click(btn_x, btn_y)
+        ok = win_move_and_click(btn_x, btn_y)
+        # 백그라운드 프로세스의 포커스 제한으로 첫 클릭이 창 활성화에만 쓰일 수 있어 한 번 더 클릭.
+        # 다운로드가 이미 시작됐다면 버튼이 비활성화되어 두 번째 클릭은 영향이 없다.
+        time.sleep(2.0)
+        win_set_foreground_window(hwnd)
+        time.sleep(0.5)
+        win_move_and_click(btn_x, btn_y)
+        return ok
     return True
 
 
