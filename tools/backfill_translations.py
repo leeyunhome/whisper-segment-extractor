@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from src.config import OUTPUT_MP3_DIR
-from src.extractor import translate_with_retry
+from src.translator import translate_texts
 
 HANGUL = re.compile("[가-힣]")
 
@@ -40,7 +40,7 @@ def parse_episodes(arg: str) -> list:
     return sorted(result)
 
 
-def backfill_episode(translator, ep: int, dry_run: bool) -> tuple:
+def backfill_episode(ep: int, dry_run: bool) -> tuple:
     """(번역한 문장 수, 실패 문장 수) 반환"""
     json_files = sorted(OUTPUT_MP3_DIR.glob(f"{ep}_*_player.json"))
     if not json_files:
@@ -52,14 +52,16 @@ def backfill_episode(translator, ep: int, dry_run: bool) -> tuple:
     mapping = {}  # 영어 원문 -> "영어 한국어"
     failed = 0
 
-    for seg in data.get("script", []):
-        eng = seg.get("text", "").strip()
-        if not eng or HANGUL.search(eng):
-            continue
-        if dry_run:
-            mapping[eng] = eng
-            continue
-        ko = translate_with_retry(translator, eng)
+    pending = [seg for seg in data.get("script", [])
+               if seg.get("text", "").strip() and not HANGUL.search(seg["text"])]
+
+    if dry_run:
+        print(f"[{ep}회] (dry-run) 번역 대상 {len(pending)}문장")
+        return len(pending), 0
+
+    translated = translate_texts([seg["text"].strip() for seg in pending]) if pending else []
+    for seg, ko in zip(pending, translated):
+        eng = seg["text"].strip()
         if ko:
             mapping[eng] = f"{eng} {ko}"
             seg["text"] = mapping[eng]
@@ -67,12 +69,8 @@ def backfill_episode(translator, ep: int, dry_run: bool) -> tuple:
             failed += 1
 
     if not mapping:
-        print(f"[{ep}회] 번역할 문장 없음")
+        print(f"[{ep}회] " + (f"번역 실패 {failed}문장" if failed else "번역할 문장 없음"))
         return 0, failed
-
-    if dry_run:
-        print(f"[{ep}회] (dry-run) 번역 대상 {len(mapping)}문장")
-        return len(mapping), 0
 
     json_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -95,14 +93,9 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="번역/저장 없이 대상만 확인")
     args = parser.parse_args()
 
-    translator = None
-    if not args.dry_run:
-        from deep_translator import GoogleTranslator
-        translator = GoogleTranslator(source="en", target="ko")
-
     total_ok = total_fail = 0
     for ep in parse_episodes(args.episodes):
-        ok, fail = backfill_episode(translator, ep, args.dry_run)
+        ok, fail = backfill_episode(ep, args.dry_run)
         total_ok += ok
         total_fail += fail
 

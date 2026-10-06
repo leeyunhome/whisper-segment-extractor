@@ -14,13 +14,13 @@
 
 import json
 import os
-import time
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional, Tuple
 
 
 
+from src.translator import translate_texts, translate_with_retry  # noqa: F401
 from src.config import (
     ANCHOR_PHRASES,
     ANCHOR_TIME_MIN,
@@ -40,25 +40,6 @@ from src.config import (
 # 패키지 존재 여부만 확인하고, 실제 import는 load_models()에서 지연 실행.
 import importlib.util as _ilu
 HAS_INA = _ilu.find_spec("inaSpeechSegmenter") is not None
-
-
-def translate_with_retry(translator, text: str, retries: int = 3,
-                         delay: float = 0.35) -> Optional[str]:
-    """Google 번역 호출 (요청 간 지연 + 지수 백오프 재시도).
-
-    무료 엔드포인트는 초당 5회 한도라 429 가 나므로, 호출 전 delay 초 대기하고
-    실패 시 1s, 2s, 4s 간격으로 재시도한다. 끝내 실패하면 None.
-    """
-    for attempt in range(retries + 1):
-        time.sleep(delay)
-        try:
-            return translator.translate(text)
-        except Exception as e:
-            if attempt >= retries:
-                print(f"  [번역 오류] {text} - {e}")
-                return None
-            time.sleep(2 ** attempt)
-    return None
 
 
 def detect_device() -> str:
@@ -889,39 +870,36 @@ class SmartConversationExtractor:
                     matched_count += 1
                     print(f"      [MATCH] '{eng_text[:30]}...' ↔ 공식 번역: '{ko_official}' (유사도: {best_ratio:.2f})")
                 else:
-                    # 매칭 실패 시 기계 번역 Fallback
-                    try:
-                        from deep_translator import GoogleTranslator
-                        translator = GoogleTranslator(source='en', target='ko')
-                        ko_text = translator.translate(eng_text)
+                    # 매칭 실패 시 기계 번역 Fallback (Gemini 우선, 실패 시 Google)
+                    ko_text = translate_texts([eng_text])[0]
+                    if ko_text:
                         p_seg["text"] = f"{eng_text} {ko_text}"
-                    except Exception as e:
-                        print(f"      [Fallback 번역 오류] {eng_text} - {e}")
+                    else:
+                        print(f"      [Fallback 번역 오류] {eng_text}")
 
             print(f"   [TRANS] 공식 번역 매핑 성공: {matched_count}/{len(clean_data['segments'])}개 세그먼트")
             return
 
-        # 3. 공식 교안이 없는 경우 기존 기계 번역 실행 (Fallback)
-        print("   [TRANS] 공식 강의안이 없어 기계 번역(GoogleTranslator)을 적용합니다.")
-        try:
-            from deep_translator import GoogleTranslator
-            translator = GoogleTranslator(source='en', target='ko')
-            
-            for p_seg in clean_data["segments"]:
-                eng_text = p_seg["text"].strip()
-                if not eng_text:
-                    continue
-                
-                # 이미 한국어가 섞여있는지 확인
-                if sum(1 for c in eng_text if '가' <= c <= '힣') > 0:
-                    continue
-                    
-                ko_text = translate_with_retry(translator, eng_text)
-                if ko_text:
-                    p_seg["text"] = f"{eng_text} {ko_text}"
-        except ImportError:
-            print("  [경고] deep_translator 패키지가 설치되지 않아 번역을 추가할 수 없습니다.")
-            print("  설치: pip install deep-translator")
+        # 3. 공식 교안이 없는 경우 기계 번역 (Gemini 우선, 실패 시 GoogleTranslator)
+        print("   [TRANS] 공식 강의안이 없어 기계 번역을 적용합니다.")
+        targets = []
+        for p_seg in clean_data["segments"]:
+            eng_text = p_seg["text"].strip()
+            # 비어 있거나 이미 한국어가 섞여 있으면 건너뜀
+            if not eng_text or any('가' <= c <= '힣' for c in eng_text):
+                continue
+            targets.append((p_seg, eng_text))
+
+        if not targets:
+            return
+
+        translated = translate_texts([t for _, t in targets])
+        ok = 0
+        for (p_seg, eng_text), ko_text in zip(targets, translated):
+            if ko_text:
+                p_seg["text"] = f"{eng_text} {ko_text}"
+                ok += 1
+        print(f"   [TRANS] 기계 번역 완료: {ok}/{len(targets)}개 세그먼트")
 
     def _save_script_from_segments(self, clean_data, base_name, audio_path,
                                    extract_start, extract_end, actual_duration):
