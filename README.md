@@ -49,9 +49,29 @@ run.bat --episode 2784-2817    # 범위
 - 회차가 많으면 `2784-2795`처럼 나눠 실행하고, 처음에는 `--episode 2784-2785`로 시험하는 것을 권장합니다.
 - 결과물: `output_mp3/`(추출 MP3, 스크립트, player.json), R2(MP3 업로드), `temp_repo/`가 있으면 GitHub Pages로 push.
 
+## ⏰ 매일 자동 실행 (스케줄러)
+매일 저녁 8시(20:00)에 EBS 웹사이트를 확인하여, **아직 처리되지 않은 새 회차가 올라왔을 때만 자동으로 다운로드 및 Whisper 전사·배포를 수행**합니다. (이미 최신 상태이거나 주말/공휴일 등 새 회차가 없으면 10초 내로 스킵됩니다.)
+
+### 스케줄러 등록 및 관리
+- **스케줄러 등록 (매일 20:00)**: `tools\register_task.bat` 실행 (Windows 작업 스케줄러에 등록)
+- **등록 상태 확인**: `tools\check_task.bat` 실행 (다음 실행 시각 및 상태 조회)
+- **스케줄러 삭제**: `tools\unregister_task.bat` 실행
+
+### 수동 실행 및 테스트
+```
+cron_run.bat                     # 기본 실행 (미처리 회차 최대 3개 순차 처리)
+cron_run.bat --dry-run           # 실제 다운로드 없이 새 회차 감지 결과만 확인
+cron_run.bat --max-batch 5       # 한 번에 처리할 최대 회차 수 지정
+```
+- 실행 로그는 `logs/cron_YYYY-MM-DD.log`에 자동 기록되며, 작업 완료 시 Windows 토스트 알림이 표시됩니다.
+- *주의: 데스크탑 다운로더 PC 앱 UI 클릭이 필요하므로, 저녁 8시에 PC가 켜져 있고 화면이 로그인된 상태여야 정상 작동합니다.*
+
 ## 🧰 도구 (`tools/`)
 | 명령 | 용도 |
 |---|---|
+| `tools\register_task.bat` | 매일 20:00 자동 전사 Windows 작업 스케줄러 등록 |
+| `tools\check_task.bat` | 작업 스케줄러 등록 상태 및 다음 실행 예정 시간 확인 |
+| `tools\unregister_task.bat` | 작업 스케줄러에서 자동 전사 작업 삭제 |
 | `python -m tools.check_gpu` | GPU/CUDA 사용 가능 여부 확인 |
 | `python -m tools.find_anchor <mp3>` | 앵커를 못 찾을 때 전사 결과를 보고 `src/config.py`의 `ANCHOR_PHRASES`에 추가할 문구 확인 |
 | `python tools/retranscribe_episode.py 2754` | 추출된 MP3를 영어로 재전사해 player.json 스크립트 갱신 |
@@ -119,4 +139,4 @@ run.bat --episode 2784-2817    # 범위
 - **해결**: 파이프라인 프로세스 기동 시 환경 변수에 **`PYTHONIOENCODING=utf-8`**을 강제로 주입하여 모든 콘솔 및 파일 캡처 스트림 인코딩을 UTF-8로 고정함으로써 문자 인코딩 관련 조기 크래시 리스크를 원천적으로 배제함.
 
 ---
-*Last Updated: 2026-05-31*
+*Last Updated: 2026-10-04*
