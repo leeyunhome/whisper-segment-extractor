@@ -104,22 +104,34 @@ def clean_english_segments(raw_segments: list, actual_duration: float) -> list:
     return clean
 
 def add_korean_translations(segments: list, base_name: str):
-    """deep_translator로 한국어 번역 추가 (PDF 매칭 없이 간단 번역)"""
-    try:
-        from deep_translator import GoogleTranslator
-        translator = GoogleTranslator(source='en', target='ko')
-        for seg in segments:
-            eng = seg['text'].strip()
-            if not eng:
-                continue
-            try:
-                ko = translator.translate(eng)
-                seg['text'] = f"{eng} {ko}"
-                print(f"   [번역] {eng} → {ko}")
-            except Exception as e:
-                print(f"   [번역 실패] {eng}: {e}")
-    except ImportError:
-        print("   [경고] deep_translator 미설치, 영어만 유지")
+    """한국어 번역 추가 (Gemini 우선, 실패 시 Google 번역). 영어 뒤에 한국어를 이어 붙인다."""
+    from src.translator import translate_texts
+    english = [seg['text'].strip() for seg in segments]
+    translated = translate_texts([e for e in english if e])
+    it = iter(translated)
+    for seg, eng in zip(segments, english):
+        if not eng:
+            continue
+        ko = next(it)
+        if ko:
+            seg['text'] = f"{eng} {ko}"
+            print(f"   [번역] {eng} → {ko}")
+        else:
+            print(f"   [번역 실패] {eng}")
+
+
+def update_txt_script(txt_path: Path, segments: list):
+    """txt 스크립트의 세그먼트 줄만 새 내용으로 교체 (헤더/푸터 유지)"""
+    if not txt_path.exists():
+        return
+    lines = txt_path.read_text(encoding='utf-8').splitlines()
+    idx = [i for i, l in enumerate(lines) if l.startswith('[')]
+    if not idx:
+        return
+    new_lines = [f"[{seg['start']:>6.2f}s - {seg['end']:>6.2f}s] {seg['text']}" for seg in segments]
+    lines[idx[0]:idx[-1] + 1] = new_lines
+    txt_path.write_text("\n".join(lines) + "\n", encoding='utf-8')
+
 
 def main():
     if len(sys.argv) < 2:
@@ -191,7 +203,9 @@ def main():
     with open(player_json_path, 'w', encoding='utf-8') as f:
         json.dump(player_data, f, ensure_ascii=False, indent=2)
 
-    print(f"\n✅ player.json 갱신 완료: {player_json_path.name}")
+    update_txt_script(OUTPUT_MP3_DIR / f"{stem}.txt", clean)
+
+    print(f"\n✅ player.json / txt 갱신 완료: {player_json_path.name}")
     print(f"   세그먼트: {len(clean)}개")
 
 if __name__ == "__main__":
