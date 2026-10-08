@@ -222,6 +222,30 @@ def close_downloader_window(timeout: float = 10.0) -> bool:
     return True
 
 
+CLICK_SETTLE_SEC = 3.0          # 창 발견 후 첫 클릭 전 대기
+CLICK_VERIFY_WAIT_SEC = 20.0    # 클릭 후 다운로드 시작을 기다리는 시간
+CLICK_VERIFY_ATTEMPTS = 4       # 최초 클릭 포함 최대 확인/클릭 횟수
+
+
+def _wait_for_download_activity(t0: float, wait_sec: float) -> bool:
+    """t0 이후 감시 폴더(또는 이미 옮겨진 source_mp3)에 파일이 생기거나 갱신되면 True"""
+    from pathlib import Path
+    from src.config import DEFAULT_WATCH_DIR, SOURCE_MP3_DIR
+
+    dirs = [Path(DEFAULT_WATCH_DIR), Path(SOURCE_MP3_DIR)]
+    deadline = time.time() + wait_sec
+    while time.time() < deadline:
+        for d in dirs:
+            try:
+                for f in d.iterdir():
+                    if f.is_file() and f.stat().st_mtime >= t0:
+                        return True
+            except OSError:
+                continue
+        time.sleep(1.0)
+    return False
+
+
 def click_download_button(timeout: float = 30.0,
                          dry_run: bool = False,
                          debug: bool = False) -> bool:
@@ -255,9 +279,27 @@ def click_download_button(timeout: float = 30.0,
         print("[FAIL] EBS Downloader 창을 찾지 못했습니다.")
         return False
 
-    time.sleep(1.0)
+    # 창이 막 떴을 때는 목록이 채워지기 전이라 클릭이 먹지 않을 수 있어 충분히 기다린다
+    time.sleep(CLICK_SETTLE_SEC)
     print("[CLICK] '다운로드 실행' 버튼 클릭...")
+    t0 = time.time()
     success = click_download_button_in_window(win, dry_run=dry_run, debug=debug)
+
+    if success and not dry_run:
+        # 클릭만으로는 다운로드 시작 여부를 알 수 없으므로 파일이 실제로 생기는지 확인하고,
+        # 시작되지 않았으면 다시 클릭한다 (진행 중에는 버튼이 비활성이라 재클릭해도 무해).
+        for attempt in range(1, CLICK_VERIFY_ATTEMPTS + 1):
+            if _wait_for_download_activity(t0, CLICK_VERIFY_WAIT_SEC):
+                print("[OK] 다운로드 시작 확인.")
+                return True
+            if attempt == CLICK_VERIFY_ATTEMPTS:
+                break
+            print(f"[RETRY] {CLICK_VERIFY_WAIT_SEC:.0f}초 안에 다운로드가 시작되지 않아 다시 클릭합니다 "
+                  f"({attempt}/{CLICK_VERIFY_ATTEMPTS - 1})")
+            win = find_ebs_downloader_window(debug=debug) or win
+            click_download_button_in_window(win, dry_run=dry_run, debug=debug)
+        print("[FAIL] 클릭했지만 다운로드가 시작되지 않았습니다.")
+        return False
 
     if success:
         print("[OK] 클릭 완료.")

@@ -49,6 +49,22 @@ def stop_watcher():
         _watcher_proc.terminate()
 
 
+def wait_for_watcher(watcher_thread, expected: int, per_episode_sec: int = 600, min_sec: int = 900) -> bool:
+    """watcher 가 끝나길 기다리되, 다운로드가 조용히 실패해 영원히 대기하는 상황을 막는다.
+
+    제한 시간 = max(min_sec, 회차 수 x per_episode_sec). 정상 처리는 회차당 약 3분이다.
+    시간 초과 시 watcher 를 종료하고 False 를 반환한다.
+    """
+    limit = max(min_sec, expected * per_episode_sec)
+    watcher_thread.join(timeout=limit)
+    if watcher_thread.is_alive():
+        print(f"\n[TIMEOUT] {limit // 60}분 안에 처리가 끝나지 않았습니다 (다운로드 실패 의심) - watcher 를 종료합니다.")
+        stop_watcher()
+        watcher_thread.join()
+        return False
+    return True
+
+
 def run_downloader(episode: str = None) -> bool:
     cmd = [sys.executable, "-m", "src.auto_download"]
     if episode:
@@ -221,6 +237,8 @@ def main():
         stop_watcher()
     else:
         print("\n[WAIT] 다운로드 + 추출 처리 대기 중... (Ctrl+C 로 중단)")
+        if not wait_for_watcher(watcher_thread, expected):
+            print("\n[ERROR] 시간 초과로 중단되었습니다. 다음 실행 때 미처리 회차로 다시 시도됩니다.")
     watcher_thread.join()
 
     # R2 누락 파일 일괄 업로드 (watcher 업로드 실패 대비 안전망)

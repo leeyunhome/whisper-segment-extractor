@@ -23,6 +23,7 @@ from typing import Optional, Tuple
 from src.translator import translate_texts, translate_with_retry  # noqa: F401
 from src.config import (
     ANCHOR_PHRASES,
+    ANCHOR_FALLBACK_PHRASES,
     ANCHOR_TIME_MIN,
     ANCHOR_TIME_MAX,
     TRANSCRIBE_START_SEC,
@@ -306,6 +307,21 @@ class SmartConversationExtractor:
                         print(f"   패턴: '{anchor}' ↔ 텍스트: '{combined[:60]}...'")
                         print(f"   시간: {end_time:.2f}초 ({end_time/60:.2f}분)\n")
                         return end_time
+
+        # 보조 앵커 (기본 앵커를 못 찾았을 때만, 완전 일치)
+        for segment in segments_ko:
+            if segment['start'] < ANCHOR_TIME_MIN:
+                continue
+            if segment['start'] > ANCHOR_TIME_MAX:
+                break
+            text = segment['text'].strip()
+            for anchor in ANCHOR_FALLBACK_PHRASES:
+                if anchor in text:
+                    end_time = segment['end']
+                    print(f"✅ 보조 앵커 발견 (일치)!")
+                    print(f"   텍스트: '{text}'")
+                    print(f"   시간: {end_time:.2f}초 ({end_time/60:.2f}분)\n")
+                    return end_time
 
         return None
 
