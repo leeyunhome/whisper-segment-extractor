@@ -346,7 +346,7 @@ def scan_folder(watch_dir: Path) -> tuple:
 
 def watch_loop(watch_dir: Path, extractor: SmartConversationExtractor,
               process_existing: bool = False, run_once: bool = False,
-              max_files: int = 0):
+              max_files: int = 0, since: float = 0.0):
     if not watch_dir.exists():
         print(f"[WARN] 감시 폴더 생성: {watch_dir}")
         try:
@@ -373,9 +373,22 @@ def watch_loop(watch_dir: Path, extractor: SmartConversationExtractor,
         if initial_ebs:
             print(f"   → 기존 파일도 처리 (--process-existing)")
     else:
-        already_seen = {str(f) for f in initial_ebs}
-        if initial_ebs:
-            print(f"   → 기존 {len(initial_ebs)}개 무시")
+        # since: 실행 시작 시각. 모델 로딩이 길어져 다운로드가 감시 시작보다 먼저 끝나도,
+        # 이 시각 이후에 생긴 파일은 '기존 파일'이 아니라 이번 실행의 새 파일로 처리한다.
+        def _is_old(f: Path) -> bool:
+            if not since:
+                return True
+            try:
+                return f.stat().st_mtime < since
+            except OSError:
+                return True
+
+        already_seen = {str(f) for f in initial_ebs if _is_old(f)}
+        fresh = len(initial_ebs) - len(already_seen)
+        if already_seen:
+            print(f"   → 기존 {len(already_seen)}개 무시")
+        if fresh:
+            print(f"   → 이번 실행 중 받은 {fresh}개는 새 파일로 처리 (--since)")
 
     print()
     processed_count = 0
@@ -456,6 +469,8 @@ def main():
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--max-files", type=int, default=0)
     parser.add_argument("--process-existing", action="store_true")
+    parser.add_argument("--since", type=float, default=0.0,
+                        help="이 epoch 시각 이후 생긴 파일은 감시 시작 전에 있었어도 새 파일로 처리")
     parser.add_argument("--debug", action="store_true")
 
     args = parser.parse_args()
@@ -478,6 +493,7 @@ def main():
         process_existing=args.process_existing,
         run_once=args.once,
         max_files=args.max_files,
+        since=args.since,
     )
 
 

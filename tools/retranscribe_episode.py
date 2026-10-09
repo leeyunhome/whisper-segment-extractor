@@ -125,11 +125,17 @@ def update_txt_script(txt_path: Path, segments: list):
     if not txt_path.exists():
         return
     lines = txt_path.read_text(encoding='utf-8').splitlines()
-    idx = [i for i, l in enumerate(lines) if l.startswith('[')]
-    if not idx:
-        return
     new_lines = [f"[{seg['start']:>6.2f}s - {seg['end']:>6.2f}s] {seg['text']}" for seg in segments]
-    lines[idx[0]:idx[-1] + 1] = new_lines
+    idx = [i for i, l in enumerate(lines) if l.startswith('[')]
+    if idx:
+        lines[idx[0]:idx[-1] + 1] = new_lines
+    else:
+        # 이전 처리에서 인식 결과가 없었던 txt: 안내 줄을 새 세그먼트로 교체하고 필터 푸터는 제거
+        empty = [i for i, l in enumerate(lines) if '영어 대화 인식 결과 없음' in l]
+        if not empty:
+            return
+        lines[empty[0]:empty[0] + 1] = new_lines
+        lines = [l for l in lines if not l.startswith(('(한국어/종결문구 필터', '(중복 제거'))]
     txt_path.write_text("\n".join(lines) + "\n", encoding='utf-8')
 
 
@@ -180,6 +186,8 @@ def main():
         word_timestamps=False,
         vad_filter=True,  # VAD 활성화로 무음 구간 스킵
         vad_parameters={"min_silence_duration_ms": 500},
+        # 이전 문장에 의존하면 짧은 대화에서 "I'm going to make a mission!" 같은 환각이 반복될 수 있다
+        condition_on_previous_text=False,
     )
 
     raw_segments = []

@@ -21,8 +21,11 @@ from src.config import PROJECT_DIR, DEFAULT_MODEL, AVAILABLE_MODELS
 
 
 def run_watcher(model: str, max_files: int, device: Optional[str] = None,
-                process_existing: bool = False):
+                process_existing: bool = False, since: float = 0.0):
     cmd = [sys.executable, "-m", "src.watcher", "--model", model]
+    if since:
+        # 모델 로딩이 다운로드보다 늦어져도 이번 실행 중 받은 파일을 놓치지 않도록
+        cmd.extend(["--since", str(since)])
     if device:
         cmd.extend(["--device", device])
     if max_files == 1:
@@ -224,7 +227,7 @@ def main():
 
     watcher_thread = Thread(
         target=run_watcher,
-        args=(args.model, expected, args.device, args.process_existing),
+        args=(args.model, expected, args.device, args.process_existing, start_time),
         daemon=False,
     )
     watcher_thread.start()
