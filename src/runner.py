@@ -210,6 +210,11 @@ def main():
     start_time = time.time()
     expected = count_episodes(args.episode)
 
+    # 실행 중 절전/화면 꺼짐 방지 (스케줄러에서 부모 프로세스가 이미 걸었어도 무해)
+    from src.power import prevent_sleep, wake_display
+    prevent_sleep()
+    wake_display()
+
     print(f"\n{'='*80}")
     print(f"[START] EBS 자동화 통합 실행")
     print(f"{'='*80}")

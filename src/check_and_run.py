@@ -197,8 +197,18 @@ def run_pipeline(episode_arg: str, model: str, device: Optional[str], logger: lo
     pipeline_log = log_dir / f"pipeline_{time.strftime('%Y-%m-%d')}.log"
     logger.info(f"[LOG] 파이프라인 출력: {pipeline_log}")
 
-    with open(pipeline_log, "a", encoding="utf-8", errors="replace") as fh:
-        res = subprocess.run(cmd, cwd=PROJECT_DIR, env=env, stdout=fh, stderr=subprocess.STDOUT)
+    # 사용자가 없을 때 PC가 절전(Modern Standby)에 들어가면 다운로더/클릭 자동화가 동작하지 않는다
+    from src.power import prevent_sleep, allow_sleep, wake_display, is_desktop_locked
+    logger.info(f"[POWER] 절전 방지 설정: {'OK' if prevent_sleep() else '실패'}")
+    wake_display()
+    if is_desktop_locked():
+        logger.warning("[LOCKED] 화면이 잠겨 있습니다. 다운로더 클릭 자동화가 동작하지 않을 수 있습니다.")
+
+    try:
+        with open(pipeline_log, "a", encoding="utf-8", errors="replace") as fh:
+            res = subprocess.run(cmd, cwd=PROJECT_DIR, env=env, stdout=fh, stderr=subprocess.STDOUT)
+    finally:
+        allow_sleep()
     return res.returncode == 0
 
 

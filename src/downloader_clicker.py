@@ -281,6 +281,13 @@ def click_download_button(timeout: float = 30.0,
 
     # 창이 막 떴을 때는 목록이 채워지기 전이라 클릭이 먹지 않을 수 있어 충분히 기다린다
     time.sleep(CLICK_SETTLE_SEC)
+    try:
+        from src.power import is_desktop_locked, wake_display
+        wake_display()
+        if is_desktop_locked():
+            print("[WARN] 화면이 잠겨 있어 클릭이 전달되지 않을 수 있습니다 (사용자 로그인 화면 필요)")
+    except Exception:
+        pass
     print("[CLICK] '다운로드 실행' 버튼 클릭...")
     t0 = time.time()
     success = click_download_button_in_window(win, dry_run=dry_run, debug=debug)
