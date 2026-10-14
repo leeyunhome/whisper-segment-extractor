@@ -246,6 +246,44 @@ def _wait_for_download_activity(t0: float, wait_sec: float) -> bool:
     return False
 
 
+def _log_click_diagnostics(win=None) -> None:
+    """클릭이 끝내 먹지 않았을 때 원인 파악용 정보를 남긴다 (잠금/전경 창/입력 유휴 시간/화면 캡처).
+
+    캡처는 logs/click_fail_*.png 에 축소본으로 저장된다 (git 추적 대상 아님).
+    """
+    try:
+        import ctypes
+        import time as _time
+        from pathlib import Path
+        from src.power import is_desktop_locked
+        from src.config import PROJECT_DIR
+
+        user32 = ctypes.windll.user32
+        title = ctypes.create_unicode_buffer(256)
+        user32.GetWindowTextW(user32.GetForegroundWindow(), title, 256)
+
+        class LASTINPUTINFO(ctypes.Structure):
+            _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
+
+        info = LASTINPUTINFO()
+        info.cbSize = ctypes.sizeof(info)
+        user32.GetLastInputInfo(ctypes.byref(info))
+        idle = (ctypes.windll.kernel32.GetTickCount() - info.dwTime) / 1000.0
+        print(f"[DIAG] 화면 잠김={is_desktop_locked()} | 전경 창={title.value!r} | "
+              f"마지막 사용자 입력 후 {idle:.0f}초 | 다운로더 최소화={getattr(win, 'isMinimized', None)}")
+
+        import pyautogui
+        out_dir = Path(PROJECT_DIR) / "logs"
+        out_dir.mkdir(exist_ok=True)
+        path = out_dir / f"click_fail_{_time.strftime('%Y%m%d_%H%M%S')}.png"
+        img = pyautogui.screenshot()
+        img.thumbnail((1280, 720))
+        img.save(path)
+        print(f"[DIAG] 화면 캡처 저장: {path}")
+    except Exception as e:
+        print(f"[DIAG] 진단 정보 수집 실패: {e}")
+
+
 def click_download_button(timeout: float = 30.0,
                          dry_run: bool = False,
                          debug: bool = False) -> bool:
@@ -306,6 +344,7 @@ def click_download_button(timeout: float = 30.0,
             win = find_ebs_downloader_window(debug=debug) or win
             click_download_button_in_window(win, dry_run=dry_run, debug=debug)
         print("[FAIL] 클릭했지만 다운로드가 시작되지 않았습니다.")
+        _log_click_diagnostics(win)
         return False
 
     if success:
